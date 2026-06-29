@@ -80,6 +80,11 @@ Features:
   date filters (since / until); loads incrementally with **infinite
   scroll**.
 - **Subagents** are collapsed under their parent and expand on demand.
+  For Claude Code this includes the per-session **sidechain transcripts**
+  (`<session>/subagents/agent-*.jsonl`), titled from each subagent's
+  `agentType` + description.
+- **Markdown rendering with syntax highlighting** for assistant/user text
+  (vendored `marked` + `highlight.js`, no CDN, served locally).
 - **Global content search** across all sessions (highlighted snippets);
   clicking a hit opens the session at the matching message.
 - **Transcript reader** that loads **lazily in windows** so even very
@@ -141,7 +146,7 @@ support `--reasoning` (include the model's thinking) and `--no-tools`
 | Source | Reads | Location (default) |
 |---|---|---|
 | `opencode` | SQLite (`session`/`message`/`part`), read-only `mode=ro` | `~/.local/share/opencode/opencode.db` |
-| `claudecode` | per-project JSONL transcripts | `~/.claude/projects/` |
+| `claudecode` | per-project JSONL transcripts + nested subagent sidechains | `~/.claude/projects/` |
 
 Override locations with environment variables:
 

@@ -37,6 +37,43 @@ const fmtTokens = (n) => {
 
 const baseName = (p) => (p ? p.split("/").filter(Boolean).slice(-1)[0] || p : "");
 
+// ---- markdown rendering (vendored marked + highlight.js) -----------------
+
+let _mdReady = false;
+function setupMarkdown() {
+  if (_mdReady || typeof marked === "undefined") return _mdReady;
+  marked.setOptions({
+    gfm: true,
+    breaks: true,
+    highlight: (code, lang) => {
+      if (typeof hljs === "undefined") return code;
+      try {
+        if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
+        return hljs.highlightAuto(code).value;
+      } catch { return code; }
+    },
+  });
+  _mdReady = true;
+  return true;
+}
+
+function renderMarkdownInto(node, text) {
+  // Render `text` as markdown into `node`. Falls back to plain text if the
+  // markdown library has not loaded yet.
+  if (setupMarkdown()) {
+    node.classList.add("md");
+    node.innerHTML = marked.parse(text);
+    // Highlight any code blocks marked.highlight missed (older marked APIs).
+    if (typeof hljs !== "undefined") {
+      node.querySelectorAll("pre code:not(.hljs)").forEach((b) => {
+        try { hljs.highlightElement(b); } catch { /* ignore */ }
+      });
+    }
+  } else {
+    node.textContent = text;
+  }
+}
+
 const debounce = (fn, ms) => {
   let t;
   return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
@@ -92,15 +129,23 @@ const state = {
 // theme
 // ====================================================================
 
+function applyHljsTheme(theme) {
+  const dark = $("#hljs-dark"), light = $("#hljs-light");
+  if (!dark || !light) return;
+  dark.disabled = theme !== "dark";
+  light.disabled = theme !== "light";
+}
 function initTheme() {
   const saved = localStorage.getItem("agentscroll-theme");
   const theme = saved || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
   document.documentElement.dataset.theme = theme;
+  applyHljsTheme(theme);
 }
 function toggleTheme() {
   const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
   document.documentElement.dataset.theme = next;
   localStorage.setItem("agentscroll-theme", next);
+  applyHljsTheme(next);
 }
 
 // ====================================================================
@@ -498,8 +543,11 @@ async function copyMessage(m, btn) {
 function messageNode(m) {
   const parts = [];
   for (const p of m.parts) {
-    if (p.type === "text" && p.text) parts.push(el("div", { class: "part text" }, el("pre", {}, p.text)));
-    else if (p.type === "reasoning" && state.reasoning && p.text)
+    if (p.type === "text" && p.text) {
+      const box = el("div", { class: "part text" });
+      renderMarkdownInto(box, p.text);
+      parts.push(box);
+    } else if (p.type === "reasoning" && state.reasoning && p.text)
       parts.push(el("div", { class: "part reasoning" }, el("span", { class: "tag" }, "reasoning"), el("pre", {}, p.text)));
     else if (p.type === "tool" && state.tools && p.text) {
       const err = p.tool_status === "error";

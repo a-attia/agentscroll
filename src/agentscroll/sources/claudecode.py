@@ -24,6 +24,26 @@ from .base import Source
 
 _DEFAULT_ROOT = Path.home() / ".claude" / "projects"
 
+# Separator embedding a subagent's agent id within a synthetic child session
+# id: "<parent_uuid>::agent-<agentId>". Uses "::" so it never collides with
+# the store's "source:id" selector parsing (which splits on a single ":").
+_CHILD_SEP = "::"
+
+
+def _child_id(parent_id: str, agent_stem: str) -> str:
+    return f"{parent_id}{_CHILD_SEP}{agent_stem}"
+
+
+def _read_meta_json(sub_path: Path) -> dict[str, Any]:
+    """Read the sibling `<agent>.meta.json` (agentType, description)."""
+    meta_path = sub_path.with_suffix(".meta.json")
+    try:
+        with meta_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
 
 def _env_root() -> Path:
     override = os.environ.get("AGENTSCROLL_CLAUDE_DIR")
@@ -53,13 +73,23 @@ class ClaudeCodeSource(Source):
 
     def _session_files(self) -> Iterator[Path]:
         # Top-level <uuid>.jsonl files are the primary sessions; nested
-        # sidechain files are folded into their parent at load time, so we
-        # list only top-level transcripts here.
+        # subagent sidechains are folded under their parent as children.
         for project_dir in sorted(self._root.iterdir()):
             if not project_dir.is_dir():
                 continue
             for f in sorted(project_dir.glob("*.jsonl")):
                 yield f
+
+    def _subagent_files(self, parent_path: Path) -> list[Path]:
+        """Return the subagent transcript files for a parent session.
+
+        Claude Code stores them in `<parent_dir>/<uuid>/subagents/agent-*.jsonl`
+        (a sibling directory next to the `<uuid>.jsonl` transcript).
+        """
+        sub_dir = parent_path.with_suffix("") / "subagents"
+        if not sub_dir.is_dir():
+            return []
+        return sorted(sub_dir.glob("agent-*.jsonl"))
 
     # -- listing ------------------------------------------------------------
 
@@ -73,6 +103,9 @@ class ClaudeCodeSource(Source):
             meta = _scan_metadata(f)
             if meta is None:
                 continue
+            children = tuple(
+                self._subagent_summary(f, sub) for sub in self._subagent_files(f)
+            )
             yield Session(
                 id=meta["session_id"],
                 source=self.name,
@@ -84,8 +117,33 @@ class ClaudeCodeSource(Source):
                 agent=None,
                 parent_id=None,
                 message_count=meta["msg_count"],
+                children=children,
                 raw={"path": str(f), "git_branch": meta["git_branch"]},
             )
+
+    def _subagent_summary(self, parent_path: Path, sub_path: Path) -> Session:
+        """Build a lightweight child Session for a subagent transcript."""
+        parent_id = parent_path.stem
+        agent_id = sub_path.stem  # e.g. "agent-a04011b25b0a152ee"
+        info = _read_meta_json(sub_path)
+        title = info.get("description") or agent_id
+        agent_type = info.get("agentType")
+        if agent_type:
+            title = f"{title} (@{agent_type})"
+        sm = _scan_metadata(sub_path)
+        return Session(
+            id=_child_id(parent_id, agent_id),
+            source=self.name,
+            title=title,
+            directory=(sm or {}).get("cwd"),
+            created=_to_dt((sm or {}).get("first_ts")),
+            updated=_to_dt((sm or {}).get("last_ts")),
+            model=(sm or {}).get("model"),
+            agent=agent_type,
+            parent_id=parent_id,
+            message_count=(sm or {}).get("msg_count", 0),
+            raw={"path": str(sub_path)},
+        )
 
     # -- single session -----------------------------------------------------
 
@@ -95,9 +153,37 @@ class ClaudeCodeSource(Source):
         path = self._find_path(session_id)
         if path is None:
             return None
+        if _CHILD_SEP in session_id:
+            return _parse_session(
+                path, self.name, override=self._child_override(session_id, path)
+            )
         return _parse_session(path, self.name)
 
+    def _child_override(self, child_id: str, sub_path: Path) -> dict[str, Any]:
+        """Title/id/parent override so a loaded subagent keeps its child id."""
+        parent_id, _, _ = child_id.partition(_CHILD_SEP)
+        info = _read_meta_json(sub_path)
+        title = info.get("description") or sub_path.stem
+        if info.get("agentType"):
+            title = f"{title} (@{info['agentType']})"
+        return {"id": child_id, "title": title,
+                "parent_id": parent_id, "agent": info.get("agentType")}
+
+    def resolve_session_id(self, selector: str) -> str | None:
+        # Child (subagent) ids are self-describing; resolve directly.
+        if _CHILD_SEP in selector and self._find_path(selector) is not None:
+            return selector
+        return super().resolve_session_id(selector)
+
     def _find_path(self, session_id: str) -> Path | None:
+        # Subagent child id: "<parent>::agent-<id>" -> nested subagents file.
+        if _CHILD_SEP in session_id:
+            parent_id, agent_id = session_id.split(_CHILD_SEP, 1)
+            parent = self._find_path(parent_id)
+            if parent is None:
+                return None
+            cand = parent.with_suffix("") / "subagents" / f"{agent_id}.jsonl"
+            return cand if cand.is_file() else None
         for f in self._session_files():
             if f.stem == session_id:
                 return f
@@ -116,14 +202,17 @@ class ClaudeCodeSource(Source):
         meta = _scan_metadata(path)
         if meta is None:
             return None
+        ovr = self._child_override(session_id, path) if _CHILD_SEP in session_id else {}
         return Session(
-            id=meta["session_id"],
+            id=ovr.get("id", meta["session_id"]),
             source=self.name,
-            title=meta["title"],
+            title=ovr.get("title", meta["title"]),
             directory=meta["cwd"],
             created=_to_dt(meta["first_ts"]),
             updated=_to_dt(meta["last_ts"]),
             model=meta["model"],
+            agent=ovr.get("agent"),
+            parent_id=ovr.get("parent_id"),
             message_count=meta["msg_count"],
             messages=(),
             raw={"path": str(path), "git_branch": meta["git_branch"]},
@@ -295,7 +384,10 @@ def _fallback_title(path: Path, cwd: str | None, first_user_text: str | None) ->
     return path.stem[:8]
 
 
-def _parse_session(path: Path, source_name: str) -> Session:
+def _parse_session(
+    path: Path, source_name: str, *, override: dict[str, Any] | None = None
+) -> Session:
+    override = override or {}
     meta = _scan_metadata(path) or {
         "session_id": path.stem,
         "cwd": None,
@@ -337,14 +429,15 @@ def _parse_session(path: Path, source_name: str) -> Session:
         )
 
     return Session(
-        id=meta["session_id"],
+        id=override.get("id", meta["session_id"]),
         source=source_name,
-        title=meta["title"],
+        title=override.get("title", meta["title"]),
         directory=meta["cwd"],
         created=_to_dt(meta["first_ts"]),
         updated=_to_dt(meta["last_ts"]),
         model=meta["model"],
-        parent_id=None,
+        agent=override.get("agent"),
+        parent_id=override.get("parent_id"),
         message_count=len(messages),
         messages=tuple(messages),
         raw={"path": str(path), "git_branch": meta["git_branch"]},

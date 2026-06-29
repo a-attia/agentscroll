@@ -359,6 +359,44 @@ button { font-family: inherit; }
   white-space: pre-wrap; word-break: break-word; margin: 0; color: var(--fg);
 }
 .part.text pre { font-family: var(--ui); font-size: 14px; line-height: 1.62; }
+
+/* rendered markdown in assistant/user text parts */
+.part.text.md { font-size: 14px; line-height: 1.62; }
+.part.text.md > *:first-child { margin-top: 0; }
+.part.text.md > *:last-child { margin-bottom: 0; }
+.part.text.md h1, .part.text.md h2, .part.text.md h3,
+.part.text.md h4, .part.text.md h5 {
+  line-height: 1.3; margin: 1.1em 0 .5em; font-weight: 650;
+}
+.part.text.md h1 { font-size: 1.4em; }
+.part.text.md h2 { font-size: 1.25em; }
+.part.text.md h3 { font-size: 1.1em; }
+.part.text.md h4 { font-size: 1em; }
+.part.text.md p { margin: .55em 0; }
+.part.text.md ul, .part.text.md ol { margin: .5em 0; padding-left: 1.5em; }
+.part.text.md li { margin: .2em 0; }
+.part.text.md a { color: var(--focus); text-decoration: underline; text-underline-offset: 2px; }
+.part.text.md blockquote {
+  margin: .6em 0; padding: .2em 0 .2em 1em;
+  border-left: 3px solid var(--line); color: var(--fg-dim);
+}
+.part.text.md hr { border: none; border-top: 1px solid var(--line); margin: 1.2em 0; }
+.part.text.md code {
+  font-family: var(--mono); font-size: .88em;
+  background: var(--panel-2); border-radius: 4px; padding: .1em .35em;
+}
+.part.text.md pre {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.5;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: .75rem .9rem; margin: .7em 0; overflow-x: auto;
+}
+.part.text.md pre code { background: none; padding: 0; font-size: 12.5px; }
+.part.text.md table {
+  border-collapse: collapse; margin: .7em 0; font-size: 13px; display: block; overflow-x: auto;
+}
+.part.text.md th, .part.text.md td { border: 1px solid var(--line); padding: .35em .6em; text-align: left; }
+.part.text.md th { background: var(--panel-2); font-weight: 600; }
+.part.text.md img { max-width: 100%; border-radius: 6px; }
 .part.reasoning {
   border-left: 2px solid var(--fg-faint); padding-left: .75rem;
   opacity: .72; font-style: italic;
