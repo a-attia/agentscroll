@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from . import __version__, clipboard, export
 from .models import Session
@@ -30,6 +30,43 @@ def _fmt_dt(dt: datetime | None) -> str:
 
 def _eprint(*a: object) -> None:
     print(*a, file=sys.stderr)
+
+
+def _parse_date(s: str | None) -> datetime | None:
+    """Parse a CLI date/datetime into an aware UTC datetime.
+
+    Accepts YYYY-MM-DD or full ISO-8601. Naive values are treated as UTC.
+    Raises argparse.ArgumentTypeError on bad input so the CLI reports it.
+    """
+    if not s:
+        return None
+    raw = s.strip()
+    try:
+        if len(raw) == 10:  # YYYY-MM-DD
+            dt = datetime.strptime(raw, "%Y-%m-%d")
+        else:
+            iso = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+            dt = datetime.fromisoformat(iso)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"invalid date {s!r}; use YYYY-MM-DD or ISO-8601"
+        ) from exc
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _fmt_tokens(n: int | None) -> str:
+    """Compact token count: 12345 -> '12.3k', 2100000 -> '2.1M'."""
+    if n is None:
+        return ""
+    if n < 1000:
+        return str(n)
+    if n < 1_000_000:
+        return f"{n / 1000:.1f}k"
+    return f"{n / 1_000_000:.1f}M"
+
+
+def _fmt_cost(c: float | None) -> str:
+    return f"${c:.2f}" if c else ""
 
 
 # -- subcommand implementations -------------------------------------------
@@ -55,10 +92,17 @@ def _make_store(args: argparse.Namespace) -> Store:
 
 def cmd_list(args: argparse.Namespace) -> int:
     store = _make_store(args)
+    offset = args.offset
+    if args.page and args.page > 1:
+        offset = (args.page - 1) * args.limit
     sessions = store.list_sessions(
         directory=args.dir,
         query=args.query,
+        since=args.since,
+        until=args.until,
         limit=args.limit,
+        offset=offset,
+        fold_subagents=not args.no_fold,
     )
     if not sessions:
         _eprint("no sessions found")
@@ -66,8 +110,8 @@ def cmd_list(args: argparse.Namespace) -> int:
     if args.json:
         import json
 
-        rows = [
-            {
+        def row(s: Session) -> dict[str, object]:
+            return {
                 "id": s.id,
                 "source": s.source,
                 "title": s.title,
@@ -76,18 +120,54 @@ def cmd_list(args: argparse.Namespace) -> int:
                 "model": s.model,
                 "agent": s.agent,
                 "messages": s.message_count,
+                "cost": s.cost,
+                "tokens_input": s.tokens_input,
+                "tokens_output": s.tokens_output,
+                "parent_id": s.parent_id,
+                "children": [row(c) for c in s.children],
             }
-            for s in sessions
-        ]
-        print(json.dumps(rows, indent=2, ensure_ascii=False))
+
+        print(json.dumps([row(s) for s in sessions], indent=2, ensure_ascii=False))
         return 0
+
+    from . import termrender
+
+    if termrender.available(force=_color_force(args)):
+        termrender.render_list(sessions, show_usage=args.usage)
+    else:
+        if args.usage:
+            _eprint(
+                f"{'source':10} {'id':13} {'updated':16} {'msgs':>9} "
+                f"{'cost':>7} {'tok in/out':>14}  title"
+            )
+        _print_list(sessions, show_usage=args.usage)
+    if offset:
+        _eprint(f"(offset {offset})")
+    return 0
+
+
+def _color_force(args: argparse.Namespace) -> bool | None:
+    """Translate --plain into a force flag for termrender.available()."""
+    if getattr(args, "plain", False):
+        return False
+    return None
+
+
+def _print_list(sessions: list[Session], *, show_usage: bool, indent: str = "") -> None:
     for s in sessions:
         msgs = f"{s.message_count:>4}" if s.message_count is not None else "   ?"
+        usage = ""
+        if show_usage:
+            toks = f"{_fmt_tokens(s.tokens_input)}/{_fmt_tokens(s.tokens_output)}"
+            cost = _fmt_cost(s.cost)
+            usage = f" {cost:>7} {toks:>14}"
+        marker = "\u2514 " if indent else ""
         print(
-            f"{s.source:10} {s.short_id:13} {_fmt_dt(s.updated):16} "
-            f"{msgs} msgs  {s.title}"
+            f"{indent}{marker}{s.source:10} {s.short_id:13} {_fmt_dt(s.updated):16} "
+            f"{msgs} msgs{usage}  {s.title}"
         )
-    return 0
+        if s.children:
+            _print_list(list(s.children), show_usage=show_usage, indent=indent + "  ")
 
 
 def _resolve(store: Store, args: argparse.Namespace) -> Session | None:
@@ -100,6 +180,15 @@ def cmd_show(args: argparse.Namespace) -> int:
     if sess is None:
         _eprint(f"session not found: {args.selector}")
         return 1
+    from . import termrender
+
+    if termrender.available(force=_color_force(args)):
+        termrender.render_transcript(
+            sess,
+            include_reasoning=args.reasoning,
+            include_tools=not args.no_tools,
+        )
+        return 0
     text = export.to_text(
         sess,
         include_reasoning=args.reasoning,
@@ -111,7 +200,15 @@ def cmd_show(args: argparse.Namespace) -> int:
 
 def cmd_search(args: argparse.Namespace) -> int:
     store = _make_store(args)
-    hits = list(store.search(args.query, directory=args.dir, limit=args.limit))
+    hits = list(
+        store.search(
+            args.query,
+            directory=args.dir,
+            since=args.since,
+            until=args.until,
+            limit=args.limit,
+        )
+    )
     if not hits:
         _eprint("no matches")
         return 1
@@ -132,8 +229,13 @@ def cmd_search(args: argparse.Namespace) -> int:
         ]
         print(json.dumps(rows, indent=2, ensure_ascii=False))
         return 0
-    for h in hits:
-        print(f"{h.session.source}:{h.session.short_id} [{h.message.role}] {h.snippet}")
+    from . import termrender
+
+    if termrender.available(force=_color_force(args)):
+        termrender.render_search(hits, args.query)
+    else:
+        for h in hits:
+            print(f"{h.session.source}:{h.session.short_id} [{h.message.role}] {h.snippet}")
     return 0
 
 
@@ -228,7 +330,17 @@ def build_parser() -> argparse.ArgumentParser:
     add_source_flag(sp)
     sp.add_argument("--dir", help="filter by directory substring")
     sp.add_argument("-q", "--query", help="filter by title substring")
+    sp.add_argument("--since", type=_parse_date, metavar="DATE",
+                    help="only sessions updated on/after DATE (YYYY-MM-DD or ISO)")
+    sp.add_argument("--until", type=_parse_date, metavar="DATE",
+                    help="only sessions updated on/before DATE")
     sp.add_argument("-n", "--limit", type=int, default=30, help="max rows (default 30)")
+    sp.add_argument("--offset", type=int, default=0, help="skip N rows (pagination)")
+    sp.add_argument("--page", type=int, help="page number (uses --limit as page size)")
+    sp.add_argument("--usage", action="store_true", help="show cost + token columns")
+    sp.add_argument("--no-fold", action="store_true",
+                    help="do not nest subagent sessions under their parent")
+    sp.add_argument("--plain", action="store_true", help="disable colour output")
     sp.add_argument("--json", action="store_true", help="JSON output")
     sp.set_defaults(func=cmd_list)
 
@@ -238,6 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("selector", help="session id / prefix / source:id / latest")
     sp.add_argument("--reasoning", action="store_true", help="include reasoning blocks")
     sp.add_argument("--no-tools", action="store_true", help="hide tool calls/outputs")
+    sp.add_argument("--plain", action="store_true", help="disable colour output")
     sp.set_defaults(func=cmd_show)
 
     # search
@@ -245,7 +358,12 @@ def build_parser() -> argparse.ArgumentParser:
     add_source_flag(sp)
     sp.add_argument("query", help="text to search for (case-insensitive)")
     sp.add_argument("--dir", help="filter by directory substring")
+    sp.add_argument("--since", type=_parse_date, metavar="DATE",
+                    help="only sessions updated on/after DATE")
+    sp.add_argument("--until", type=_parse_date, metavar="DATE",
+                    help="only sessions updated on/before DATE")
     sp.add_argument("-n", "--limit", type=int, default=50, help="max hits (default 50)")
+    sp.add_argument("--plain", action="store_true", help="disable colour output")
     sp.add_argument("--json", action="store_true", help="JSON output")
     sp.set_defaults(func=cmd_search)
 

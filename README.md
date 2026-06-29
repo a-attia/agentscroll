@@ -45,6 +45,12 @@ agentscroll list                          # recent sessions, newest first
 agentscroll list --source opencode -n 10  # only opencode, 10 rows
 agentscroll list --dir myproject          # filter by directory substring
 agentscroll list -q "refactor"            # filter by title substring
+agentscroll list --since 2026-06-01       # date range (YYYY-MM-DD or ISO)
+agentscroll list --until 2026-06-30
+agentscroll list --usage                  # show cost + token (in/out) columns
+agentscroll list --no-fold                # don't nest subagents under parents
+agentscroll list -n 20 --page 2           # pagination (page size = --limit)
+agentscroll list --plain                  # disable colour (auto-off when piped)
 
 agentscroll show latest                   # print the most recent transcript
 agentscroll show ses_0eae9810 --reasoning # include reasoning blocks
@@ -93,6 +99,19 @@ Commands that take a session accept any of:
 support `--reasoning` (include the model's thinking) and `--no-tools`
 (omit tool calls and their output). JSON is a faithful structured dump
 (with bulky raw blobs stripped for readability).
+
+### Subagents, usage, and colour
+
+- **Subagent folding** (default on for `list`): sessions spawned by
+  another (opencode `parent_id`; e.g. `@explore` subagents) are nested
+  under their parent. Use `--no-fold` to list them flat.
+- **Usage columns** (`--usage`): show cost and `tokens in/out`. (opencode
+  tracks these; input is dominated by cache reads. Cost may be `$0` when
+  your provider does not report it.)
+- **Colour**: `list`, `search`, and `show` render with colour when the
+  optional `rich` package is installed and output is a terminal; piping
+  or `--plain` falls back to plain text. Install with
+  `pip install -e ".[rich]"`.
 
 ## Sources
 

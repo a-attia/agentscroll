@@ -135,6 +135,7 @@ def _scan_metadata(path: Path) -> dict[str, Any] | None:
     title: str | None = None
     first_ts: str | None = None
     last_ts: str | None = None
+    first_user_text: str | None = None
     msg_count = 0
     seen = False
 
@@ -160,10 +161,18 @@ def _scan_metadata(path: Path) -> dict[str, Any] | None:
                 if first_ts is None:
                     first_ts = ts
                 last_ts = ts
-            if model is None:
-                m = obj.get("message", {})
-                if isinstance(m, dict) and m.get("model"):
-                    model = m["model"]
+            m = obj.get("message", {})
+            if model is None and isinstance(m, dict):
+                mv = m.get("model")
+                if mv and mv != "<synthetic>":
+                    model = mv
+            if (
+                first_user_text is None
+                and t == "user"
+                and not obj.get("isMeta")
+                and isinstance(m, dict)
+            ):
+                first_user_text = _first_text(m.get("content"))
 
     if not seen:
         return None
@@ -172,14 +181,52 @@ def _scan_metadata(path: Path) -> dict[str, Any] | None:
         "cwd": cwd,
         "git_branch": git_branch,
         "model": model,
-        "title": title or _fallback_title(path),
+        "title": title or _fallback_title(path, cwd, first_user_text),
         "first_ts": first_ts,
         "last_ts": last_ts,
         "msg_count": msg_count,
     }
 
 
-def _fallback_title(path: Path) -> str:
+def _clean_model(model: Any) -> str | None:
+    """Drop Claude Code's '<synthetic>' placeholder used on system turns."""
+    if not model or model == "<synthetic>":
+        return None
+    return model
+
+
+def _first_text(content: Any) -> str | None:
+    """Extract the first human-readable text from a message content field."""
+    if isinstance(content, str):
+        s = content.strip()
+        return s or None
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                s = (block.get("text") or "").strip()
+                if s:
+                    return s
+            elif isinstance(block, str) and block.strip():
+                return block.strip()
+    return None
+
+
+def _fallback_title(path: Path, cwd: str | None, first_user_text: str | None) -> str:
+    """Build a readable title when the transcript has no ai-title.
+
+    Prefer the first user line (trimmed), prefixed by the project basename
+    for context; fall back to the directory basename, then the UUID prefix.
+    """
+    project = ""
+    if cwd:
+        project = cwd.rstrip("/").split("/")[-1]
+    if first_user_text:
+        snippet = " ".join(first_user_text.split())
+        if len(snippet) > 60:
+            snippet = snippet[:57] + "..."
+        return f"{project}: {snippet}" if project else snippet
+    if project:
+        return project
     return path.stem[:8]
 
 
@@ -189,7 +236,7 @@ def _parse_session(path: Path, source_name: str) -> Session:
         "cwd": None,
         "git_branch": None,
         "model": None,
-        "title": _fallback_title(path),
+        "title": path.stem[:8],
         "first_ts": None,
         "last_ts": None,
         "msg_count": 0,
@@ -219,7 +266,7 @@ def _parse_session(path: Path, source_name: str) -> Session:
                 role=role,
                 created=_to_dt(obj.get("timestamp")),
                 parts=tuple(parts),
-                model=m.get("model"),
+                model=_clean_model(m.get("model")),
                 raw=obj,
             )
         )

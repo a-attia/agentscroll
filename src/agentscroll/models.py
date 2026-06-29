@@ -105,6 +105,12 @@ class Session:
     agent: str | None = None
     parent_id: str | None = None
     message_count: int | None = None
+    # Usage accounting (opencode tracks these; None when unknown).
+    cost: float | None = None
+    tokens_input: int | None = None
+    tokens_output: int | None = None
+    # Children populated when subagent folding is enabled.
+    children: tuple["Session", ...] = ()
     messages: tuple[Message, ...] = ()
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -112,6 +118,17 @@ class Session:
     def short_id(self) -> str:
         """A compact id suitable for display and prefix selection."""
         return self.id[:12]
+
+    @property
+    def is_subagent(self) -> bool:
+        """True if this session was spawned by another (has a parent)."""
+        return bool(self.parent_id)
+
+    @property
+    def tokens_total(self) -> int | None:
+        if self.tokens_input is None and self.tokens_output is None:
+            return None
+        return (self.tokens_input or 0) + (self.tokens_output or 0)
 
 
 # Re-export the converter for adapters.

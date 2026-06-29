@@ -1,6 +1,6 @@
 """Unit tests for pure model/conversion helpers (no I/O, deterministic)."""
 
-from datetime import datetime, timezone
+from datetime import timezone
 
 from agentscroll.models import Message, Part, Session, _to_dt
 

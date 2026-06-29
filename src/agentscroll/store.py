@@ -51,12 +51,22 @@ class Store:
         *,
         directory: str | None = None,
         query: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int | None = None,
+        offset: int = 0,
+        fold_subagents: bool = False,
     ) -> list[Session]:
         """List sessions across sources, newest first.
 
-        `directory`: keep only sessions whose directory contains this path
-        substring. `query`: case-insensitive substring match on the title.
+        Args:
+          directory: keep only sessions whose directory contains this substring.
+          query: case-insensitive substring match on the title.
+          since / until: keep sessions whose updated (or created) time falls
+            within the range (inclusive).
+          limit / offset: pagination over the filtered, sorted result.
+          fold_subagents: nest subagent sessions under their parent (as
+            `.children`) instead of listing them at the top level.
         """
         results: list[Session] = []
         for src in self._sources:
@@ -65,8 +75,19 @@ class Store:
                     continue
                 if query and query.lower() not in (sess.title or "").lower():
                     continue
+                when = sess.updated or sess.created
+                if since and (when is None or when < since):
+                    continue
+                if until and (when is None or when > until):
+                    continue
                 results.append(sess)
         results.sort(key=_sort_key, reverse=True)
+
+        if fold_subagents:
+            results = _fold(results)
+
+        if offset:
+            results = results[offset:]
         if limit is not None:
             results = results[:limit]
         return results
@@ -96,6 +117,8 @@ class Store:
         query: str,
         *,
         directory: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         limit: int | None = None,
         context: int = 80,
     ) -> Iterator[SearchHit]:
@@ -107,7 +130,7 @@ class Store:
         """
         ql = query.lower()
         count = 0
-        for meta in self.list_sessions(directory=directory):
+        for meta in self.list_sessions(directory=directory, since=since, until=until):
             src = next((s for s in self._sources if s.name == meta.source), None)
             if src is None:
                 continue
@@ -130,6 +153,30 @@ class Store:
                     count += 1
                     if limit is not None and count >= limit:
                         return
+
+
+def _fold(sessions: list[Session]) -> list[Session]:
+    """Nest subagent sessions under their parent.
+
+    A session with a `parent_id` that matches another session's id becomes a
+    child of that parent (attached via `.children`). Subagents whose parent
+    is not in the list stay at top level so nothing is lost. Order among
+    top-level sessions is preserved; children keep newest-first order.
+    """
+    from dataclasses import replace
+
+    by_id = {s.id: s for s in sessions}
+    children_of: dict[str, list[Session]] = {}
+    top: list[Session] = []
+    for s in sessions:
+        if s.parent_id and s.parent_id in by_id:
+            children_of.setdefault(s.parent_id, []).append(s)
+        else:
+            top.append(s)
+    return [
+        replace(s, children=tuple(children_of.get(s.id, ()))) if s.id in children_of else s
+        for s in top
+    ]
 
 
 def _split_selector(selector: str, source: str | None) -> tuple[str | None, str]:

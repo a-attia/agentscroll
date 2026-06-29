@@ -75,6 +75,7 @@ class OpenCodeSource(Source):
                 """
                 SELECT s.id, s.title, s.directory, s.time_created,
                        s.time_updated, s.model, s.agent, s.parent_id,
+                       s.cost, s.tokens_input, s.tokens_output,
                        (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id)
                            AS msg_count
                 FROM session s
@@ -93,6 +94,9 @@ class OpenCodeSource(Source):
                 agent=r["agent"],
                 parent_id=r["parent_id"],
                 message_count=r["msg_count"],
+                cost=r["cost"],
+                tokens_input=r["tokens_input"],
+                tokens_output=r["tokens_output"],
             )
 
     # -- single session -----------------------------------------------------
@@ -156,11 +160,22 @@ class OpenCodeSource(Source):
             agent=srow["agent"],
             parent_id=srow["parent_id"],
             message_count=len(messages),
+            cost=_col(srow, "cost"),
+            tokens_input=_col(srow, "tokens_input"),
+            tokens_output=_col(srow, "tokens_output"),
             messages=tuple(messages),
         )
 
 
 # -- helpers ---------------------------------------------------------------
+
+
+def _col(row: sqlite3.Row, key: str) -> Any:
+    """Read a column from a Row, returning None if absent."""
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return None
 
 
 def _loads(s: str | None) -> dict[str, Any]:
