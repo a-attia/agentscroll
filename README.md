@@ -58,7 +58,25 @@ agentscroll export <id> -f html -o session.html
 agentscroll export <id> -f json           # to stdout
 
 agentscroll copy latest -f markdown       # copy to clipboard
+
+agentscroll web                           # launch the local web app
+agentscroll web -p 9000 --no-browser      # custom port, don't auto-open
 ```
+
+### Web app
+
+`agentscroll web` starts a local, read-only browser UI (FastAPI + a
+small vanilla-JS frontend) bound to `127.0.0.1` by default. It provides:
+
+- a session list with source filters and title filtering,
+- global content search across all sessions (highlighted snippets),
+- a rich transcript reader with `reasoning` / `tools` toggles,
+- per-session export (Markdown / HTML / JSON) and copy-to-clipboard.
+
+Deep links: the open session is reflected in the URL hash
+(`#opencode/<id>`), and `?q=<text>` pre-fills a content search.
+
+Install the web extra first: `pip install -e ".[web]"`.
 
 ### Selectors
 

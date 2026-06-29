@@ -1,0 +1,119 @@
+"""API tests for the web app using a synthetic in-memory Store.
+
+We build adapters backed by hand-made sessions so these tests are fully
+deterministic and do not depend on local agent data. FastAPI's TestClient
+exercises the real routing + serialization path.
+"""
+
+from datetime import datetime, timezone
+
+import pytest
+
+pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient  # noqa: E402
+
+from agentscroll.models import Message, Part, Session  # noqa: E402
+from agentscroll.sources.base import Source  # noqa: E402
+from agentscroll.store import Store  # noqa: E402
+from agentscroll.web.app import create_app  # noqa: E402
+
+
+def _session(sid: str, title: str, body: str) -> Session:
+    created = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    msg = Message(
+        id=f"{sid}-m1",
+        role="user",
+        created=created,
+        parts=(Part(id=f"{sid}-p1", type="text", text=body),),
+    )
+    return Session(
+        id=sid,
+        source="fake",
+        title=title,
+        directory="/tmp/proj",
+        created=created,
+        updated=created,
+        model="m",
+        messages=(msg,),
+        message_count=1,
+    )
+
+
+class FakeSource(Source):
+    name = "fake"
+    label = "Fake"
+
+    def __init__(self):
+        self._sessions = {
+            "s1": _session("s1", "First session", "hello world about pytest"),
+            "s2": _session("s2", "Second session", "another conversation entirely"),
+        }
+
+    def is_available(self):
+        return True
+
+    def location(self):
+        from pathlib import Path
+
+        return Path("/tmp/fake")
+
+    def list_sessions(self):
+        return iter(self._sessions.values())
+
+    def load_session(self, session_id):
+        return self._sessions.get(session_id)
+
+
+@pytest.fixture
+def client():
+    store = Store([FakeSource()])
+    return TestClient(create_app(store))
+
+
+def test_health(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    assert r.json()["status"] == "ok"
+    assert "fake" in r.json()["sources"]
+
+
+def test_sources(client):
+    data = client.get("/api/sources").json()
+    assert data[0]["name"] == "fake"
+    assert data[0]["available"] is True
+
+
+def test_sessions_list_and_title_filter(client):
+    allrows = client.get("/api/sessions").json()
+    assert len(allrows) == 2
+    filtered = client.get("/api/sessions?q=First").json()
+    assert len(filtered) == 1
+    assert filtered[0]["title"] == "First session"
+
+
+def test_session_detail_and_404(client):
+    ok = client.get("/api/sessions/fake/s1").json()
+    assert ok["id"] == "s1"
+    assert len(ok["messages"]) == 1
+    missing = client.get("/api/sessions/fake/nope")
+    assert missing.status_code == 404
+
+
+def test_search(client):
+    hits = client.get("/api/search?q=pytest").json()
+    assert len(hits) == 1
+    assert hits[0]["session_id"] == "s1"
+    assert "pytest" in hits[0]["snippet"].lower()
+
+
+def test_export_formats_and_headers(client):
+    md = client.get("/api/export/fake/s1?format=markdown")
+    assert md.status_code == 200
+    assert "First session" in md.text
+    assert md.headers["content-type"].startswith("text/markdown")
+
+    dl = client.get("/api/export/fake/s1?format=json&download=true")
+    assert "attachment" in dl.headers.get("content-disposition", "")
+
+    bad = client.get("/api/export/fake/s1?format=pdf")
+    assert bad.status_code == 400

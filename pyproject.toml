@@ -45,6 +45,9 @@ Issues = "https://github.com/attia/agentscroll/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentscroll"]
+# Static web assets live inside the package and are non-Python; tell
+# hatchling to include them in the wheel artifact.
+artifacts = ["src/agentscroll/web/static/*"]
 
 [tool.ruff]
 line-length = 100

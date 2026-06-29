@@ -179,6 +179,31 @@ def _render_kwargs(fmt: str, args: argparse.Namespace) -> dict[str, object]:
     }
 
 
+def cmd_web(args: argparse.Namespace) -> int:
+    try:
+        import uvicorn
+    except ModuleNotFoundError:
+        _eprint(
+            "the web app needs extra dependencies. install with:\n"
+            '    pip install "agentscroll[web]"\n'
+            "or:\n"
+            "    pip install fastapi uvicorn"
+        )
+        return 1
+    from .web.app import create_app
+
+    app = create_app()
+    url = f"http://{args.host}:{args.port}"
+    _eprint(f"agentscroll web -> {url}  (read-only; Ctrl-C to stop)")
+    if not args.no_browser:
+        import threading
+        import webbrowser
+
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
 # -- argument parser -------------------------------------------------------
 
 
@@ -248,6 +273,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--reasoning", action="store_true", help="include reasoning blocks")
     sp.add_argument("--no-tools", action="store_true", help="hide tool calls/outputs")
     sp.set_defaults(func=cmd_copy)
+
+    # web
+    sp = sub.add_parser("web", help="launch the local web app (read-only)")
+    sp.add_argument("--host", default="127.0.0.1", help="bind host (default localhost)")
+    sp.add_argument("-p", "--port", type=int, default=8765, help="port (default 8765)")
+    sp.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    sp.set_defaults(func=cmd_web)
 
     return p
 
