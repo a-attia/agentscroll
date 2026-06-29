@@ -37,8 +37,18 @@ def test_unordered_and_ordered_lists():
 
 
 def test_fenced_code_block_with_language():
+    # With a language tag, the code is syntax-highlighted (spans added).
     out = minimd.render("```python\nx = 1\n```")
-    assert out == '<pre><code class="language-python">x = 1</code></pre>'
+    assert out.startswith('<pre><code class="language-python">')
+    assert out.endswith("</code></pre>")
+    assert 'class="hl-num"' in out  # the numeric literal is highlighted
+    assert ">1<" in out
+
+
+def test_fenced_code_block_without_language_is_plain():
+    # No language tag => plain escaped code, no highlight spans.
+    out = minimd.render("```\nx = 1\n```")
+    assert out == "<pre><code>x = 1</code></pre>"
 
 
 def test_fenced_code_block_escapes_html():

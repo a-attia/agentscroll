@@ -67,6 +67,7 @@ agentscroll copy latest -f markdown       # copy to clipboard
 
 agentscroll web                           # launch the local web app
 agentscroll web -p 9000 --no-browser      # custom port, don't auto-open
+agentscroll web --app                     # open in a native desktop window
 ```
 
 ### Web app
@@ -76,16 +77,20 @@ small vanilla-JS frontend, no build step) bound to `127.0.0.1` by default.
 
 Features:
 
-- **Session list** with clear source filter chips, title filtering, and
-  date filters (since / until); loads incrementally with **infinite
-  scroll**.
+- **Session list** with clear source filter chips, date filters
+  (since / until), and a **home** button (reset everything); loads
+  incrementally with **infinite scroll**.
+- **Explicit search scope**: a `titles | contents` toggle next to the
+  search box. Search session titles, message contents, or both at once
+  (combined results are grouped into "title matches" and "content
+  matches").
 - **Subagents** are collapsed under their parent and expand on demand.
   For Claude Code this includes the per-session **sidechain transcripts**
   (`<session>/subagents/agent-*.jsonl`), titled from each subagent's
   `agentType` + description.
 - **Markdown rendering with syntax highlighting** for assistant/user text
   (vendored `marked` + `highlight.js`, no CDN, served locally).
-- **Global content search** across all sessions (highlighted snippets);
+- **Content search** across all sessions (highlighted snippets);
   clicking a hit opens the session at the matching message.
 - **Transcript reader** that loads **lazily in windows** so even very
   large sessions (tens of thousands of messages) open instantly without
@@ -102,6 +107,26 @@ Deep links: the open session is reflected in the URL hash
 (`#opencode/<id>`), and `?q=<text>` pre-fills a content search.
 
 Install the web extra first: `pip install -e ".[web]"`.
+
+#### Launching without the terminal
+
+You don't have to type a command every time. Options (pick what suits
+your OS):
+
+- **Double-click launchers** in `launchers/`:
+  - macOS: `agentscroll.command` (first run: right-click -> Open)
+  - Windows: `agentscroll.bat`
+  - Linux: `agentscroll.sh`, or install `agentscroll.desktop` into your
+    application menu (`~/.local/share/applications/`).
+- **Desktop app window**: `agentscroll web --app` opens a native window
+  (no browser tab) via `pywebview`. Install with
+  `pip install -e ".[app]"`.
+- **Global command**: install with `pipx install agentscroll` (or
+  `pip install`) so `agentscroll web` works from anywhere.
+
+All of these run the same local, read-only server; they differ only in
+how it's started and displayed. This keeps agentscroll platform-agnostic
+(no bundled native binary to maintain per OS).
 
 #### How huge sessions stay fast
 

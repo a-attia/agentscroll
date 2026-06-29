@@ -16,6 +16,7 @@ from .store import SearchHit
 
 try:  # pragma: no cover - exercised indirectly
     from rich.console import Console
+    from rich.markdown import Markdown
     from rich.table import Table
     from rich.text import Text
 
@@ -125,7 +126,9 @@ def render_search(hits: list[SearchHit], query: str) -> None:
             console.print("  ", snippet)
 
 
-def render_transcript(sess: Session, *, include_reasoning: bool, include_tools: bool) -> None:
+def render_transcript(
+    sess: Session, *, include_reasoning: bool, include_tools: bool, markdown: bool = True
+) -> None:
     console = _console()
     title = Text(sess.title or "(untitled)", style="bold")
     console.print(title)
@@ -140,27 +143,29 @@ def render_transcript(sess: Session, *, include_reasoning: bool, include_tools: 
     for msg in sess.messages:
         role_style = "cyan" if msg.role == "user" else "green"
         printed_role = False
-        for part in msg.parts:
-            text = ""
-            style = None
-            if part.type == "text" and part.text:
-                text = part.text
-            elif part.type == "reasoning" and include_reasoning and part.text:
-                text = part.text
-                style = "dim italic"
-            elif part.type == "tool" and include_tools and part.text:
-                label = part.tool_name or part.tool_status or "tool"
-                if not printed_role:
-                    console.print(Text(msg.role.upper(), style=f"bold {role_style}"))
-                    printed_role = True
-                console.print(Text(f"  $ {label}", style="yellow"))
-                console.print(Text("  " + part.text.replace("\n", "\n  "), style="dim"))
-                continue
-            if not text:
-                continue
+
+        def ensure_role() -> None:
+            nonlocal printed_role
             if not printed_role:
                 console.print(Text(msg.role.upper(), style=f"bold {role_style}"))
                 printed_role = True
-            console.print(Text(text, style=style) if style else text)
+
+        for part in msg.parts:
+            if part.type == "text" and part.text:
+                ensure_role()
+                # Render assistant/user prose as Markdown (code, lists,
+                # headings, bold) when markdown is on; else plain text.
+                if markdown:
+                    console.print(Markdown(part.text))
+                else:
+                    console.print(part.text)
+            elif part.type == "reasoning" and include_reasoning and part.text:
+                ensure_role()
+                console.print(Text(part.text, style="dim italic"))
+            elif part.type == "tool" and include_tools and part.text:
+                label = part.tool_name or part.tool_status or "tool"
+                ensure_role()
+                console.print(Text(f"  $ {label}", style="yellow"))
+                console.print(Text("  " + part.text.replace("\n", "\n  "), style="dim"))
         if printed_role:
             console.print()

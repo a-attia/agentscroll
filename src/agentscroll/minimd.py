@@ -18,6 +18,8 @@ from __future__ import annotations
 import html as _html
 import re
 
+from . import highlight as _highlight
+
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _UL_ITEM = re.compile(r"^[ \t]*[-*+]\s+(.*)$")
 _OL_ITEM = re.compile(r"^[ \t]*\d+[.)]\s+(.*)$")
@@ -46,8 +48,14 @@ def render(text: str) -> str:
             while j < n and not _is_closing_fence(lines[j], fence):
                 buf.append(lines[j])
                 j += 1
-            code = _html.escape("\n".join(buf))
-            cls = f' class="language-{_html.escape(lang)}"' if lang else ""
+            raw = "\n".join(buf)
+            if lang:
+                # Highlighter escapes internally and emits only safe spans.
+                code = _highlight.highlight(raw, lang)
+                cls = f' class="language-{_html.escape(lang)}"'
+            else:
+                code = _html.escape(raw)
+                cls = ""
             out.append(f"<pre><code{cls}>{code}</code></pre>")
             i = j + 1
             continue

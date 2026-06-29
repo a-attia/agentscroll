@@ -112,7 +112,8 @@ const MSG_PAGE = 40;        // transcript message window size
 const state = {
   sources: [],
   enabled: new Set(),
-  mode: "title",            // "title" | "content"
+  // search scope: which targets the query is matched against.
+  scope: { titles: true, contents: false },
   query: "",
   since: "",
   until: "",
@@ -193,17 +194,32 @@ function enabledParam() {
 // ====================================================================
 
 const searchInput = $("#search-input");
-const searchModeKbd = $("#search-mode");
+const scopeTitlesBtn = $("#scope-titles");
+const scopeContentsBtn = $("#scope-contents");
 
-function detectMode(raw) {
-  return raw.startsWith(" ") ? "content" : "title";
+function updateScopeButtons() {
+  scopeTitlesBtn.setAttribute("aria-pressed", String(state.scope.titles));
+  scopeContentsBtn.setAttribute("aria-pressed", String(state.scope.contents));
+  // Placeholder reflects the active scope so intent is always clear.
+  const where =
+    state.scope.titles && state.scope.contents ? "titles + contents"
+    : state.scope.contents ? "message contents"
+    : "titles";
+  searchInput.placeholder = `search ${where}\u2026`;
+}
+
+function toggleScope(which) {
+  state.scope[which] = !state.scope[which];
+  // Never allow an empty scope; fall back to the other target.
+  if (!state.scope.titles && !state.scope.contents) {
+    state.scope[which === "titles" ? "contents" : "titles"] = true;
+  }
+  updateScopeButtons();
+  resetAndLoad();
 }
 
 const onSearchInput = debounce(() => {
-  const raw = searchInput.value;
-  state.mode = detectMode(raw);
-  state.query = raw.trim();
-  searchModeKbd.textContent = state.mode;
+  state.query = searchInput.value.trim();
   resetAndLoad();
 }, 200);
 
@@ -225,10 +241,15 @@ async function loadListPage(reset = false) {
   if (state.list.loading) return;
   state.list.loading = true;
   try {
-    if (state.mode === "content" && state.query) {
-      await loadSearch(reset);
+    const q = state.query;
+    const wantContents = state.scope.contents && q;
+    const wantTitles = state.scope.titles;
+    if (wantContents && wantTitles && q) {
+      await loadCombined(reset);          // titles + contents
+    } else if (wantContents) {
+      await loadSearch(reset);            // contents only
     } else {
-      await loadSessions(reset);
+      await loadSessions(reset);          // titles only (or no query)
     }
   } catch (err) {
     if (reset) sessionsEl.replaceChildren(el("li", { class: "loading" }, "error: " + err.message));
@@ -273,11 +294,54 @@ async function loadSearch(reset) {
   const hits = (await getJSON("/api/search?" + p.toString()))
     .filter((h) => state.enabled.has(h.source));
   state.list.hasMore = false;
-  $("#count").textContent = `${hits.length} matches`;
+  $("#count").textContent = `${hits.length} content matches`;
   $("#count").dataset.n = String(hits.length);
   sessionsEl.replaceChildren();
   if (!hits.length) { sessionsEl.append(el("li", { class: "loading" }, "no matches")); return; }
   hits.forEach((h) => sessionsEl.append(searchRow(h)));
+}
+
+async function loadCombined(reset) {
+  state.list.kind = "search";        // single-shot, no infinite scroll
+  if (!reset) return;
+  // Fetch title matches and content matches in parallel.
+  const sp = new URLSearchParams({ offset: "0", limit: "200", fold: "true", q: state.query });
+  if (state.since) sp.set("since", state.since);
+  if (state.until) sp.set("until", state.until);
+  const src = enabledParam();
+  if (src) sp.set("source", src);
+
+  const cp = new URLSearchParams({ q: state.query, limit: "200" });
+  if (state.since) cp.set("since", state.since);
+  if (state.until) cp.set("until", state.until);
+
+  const [titleData, contentHits] = await Promise.all([
+    getJSON("/api/sessions?" + sp.toString()),
+    getJSON("/api/search?" + cp.toString()),
+  ]);
+  const titleRows = titleData.sessions.filter((s) => state.enabled.has(s.source));
+  const titleIds = new Set(titleRows.map((s) => s.source + ":" + s.id));
+  // Drop content hits whose session already appears as a title match.
+  const hits = contentHits.filter(
+    (h) => state.enabled.has(h.source) && !titleIds.has(h.source + ":" + h.session_id)
+  );
+
+  state.list.hasMore = false;
+  $("#count").textContent = `${titleRows.length} title + ${hits.length} content`;
+  $("#count").dataset.n = String(titleRows.length + hits.length);
+  sessionsEl.replaceChildren();
+  if (!titleRows.length && !hits.length) {
+    sessionsEl.append(el("li", { class: "loading" }, "no matches"));
+    return;
+  }
+  if (titleRows.length) {
+    sessionsEl.append(el("li", { class: "group-label" }, "title matches"));
+    titleRows.forEach((s) => sessionsEl.append(sessionRow(s)));
+  }
+  if (hits.length) {
+    sessionsEl.append(el("li", { class: "group-label" }, "content matches"));
+    hits.forEach((h) => sessionsEl.append(searchRow(h)));
+  }
 }
 
 railEl.addEventListener("scroll", () => {
@@ -727,7 +791,42 @@ document.addEventListener("keydown", (e) => {
 // boot
 // ====================================================================
 
+function clearAll() {
+  // Reset to the initial "home" state: no query, default scope, all sources
+  // on, no date filters, no open transcript.
+  searchInput.value = "";
+  state.query = "";
+  state.scope = { titles: true, contents: false };
+  updateScopeButtons();
+
+  state.enabled = new Set(state.sources.map((s) => s.name));
+  document.querySelectorAll(".src-toggle").forEach((b) => {
+    b.setAttribute("aria-pressed", "true");
+    const c = b.querySelector(".check");
+    if (c) c.textContent = "\u2713";
+  });
+
+  state.since = ""; state.until = "";
+  const since = $("#since"), until = $("#until");
+  if (since) since.value = "";
+  if (until) until.value = "";
+
+  // Close the open transcript.
+  state.current = null;
+  $("#transcript").hidden = true;
+  $("#empty").hidden = false;
+  history.replaceState(null, "", location.pathname);
+
+  resetAndLoad();
+  $("#rail").scrollTop = 0;
+}
+
 searchInput.addEventListener("input", onSearchInput);
+scopeTitlesBtn.addEventListener("click", () => toggleScope("titles"));
+scopeContentsBtn.addEventListener("click", () => toggleScope("contents"));
+$("#home-btn").addEventListener("click", clearAll);
+$("#brand").addEventListener("click", clearAll);
+$("#brand").style.cursor = "pointer";
 $("#theme-toggle").addEventListener("click", toggleTheme);
 $("#since").addEventListener("change", (e) => { state.since = e.target.value; resetAndLoad(); });
 $("#until").addEventListener("change", (e) => { state.until = e.target.value; resetAndLoad(); });
@@ -739,7 +838,13 @@ function openFromHash() {
 }
 function prefillSearchFromUrl() {
   const q = new URLSearchParams(location.search).get("q");
-  if (q) { searchInput.value = " " + q; state.mode = "content"; state.query = q; searchModeKbd.textContent = "content"; return true; }
+  if (q) {
+    // A ?q= deep link implies a content search.
+    searchInput.value = q;
+    state.query = q;
+    state.scope.contents = true;
+    return true;
+  }
   return false;
 }
 
@@ -748,6 +853,7 @@ function prefillSearchFromUrl() {
   try {
     await loadSources();
     prefillSearchFromUrl();
+    updateScopeButtons();
     await loadListPage(true);
     if (location.hash) openFromHash();
   } catch (err) {

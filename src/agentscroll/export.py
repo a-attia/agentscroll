@@ -171,6 +171,7 @@ pre {{ white-space: pre-wrap; word-break: break-word; margin: .25rem 0; }}
 .md pre {{ background: rgba(127,127,127,.12); border: 1px solid rgba(127,127,127,.25);
            border-radius: 8px; padding: .7rem .9rem; overflow-x: auto; }}
 .md pre code {{ background: none; padding: 0; }}
+{hl_css}
 @media print {{
   body {{ max-width: none; }}
   .msg {{ break-inside: avoid; }}
@@ -208,7 +209,14 @@ def to_html(session: Session, *, include_reasoning: bool = True,
         title=_html.escape(session.title),
         meta=meta,
         body="\n".join(body_parts),
+        hl_css=minimd_highlight_css(),
     )
+
+
+def minimd_highlight_css() -> str:
+    from . import highlight
+
+    return highlight.HL_CSS
 
 
 def _html_message(msg: Message, include_reasoning: bool, include_tools: bool) -> str:

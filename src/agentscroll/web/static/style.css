@@ -110,7 +110,44 @@ button { font-family: inherit; }
   border-color: var(--focus);
   box-shadow: 0 0 0 3px var(--focus-soft);
 }
-#search-mode { white-space: nowrap; }
+/* segmented search-scope control */
+.search-scope {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: none;
+}
+.scope-btn {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  background: var(--ink);
+  border: none;
+  padding: .45rem .7rem;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.scope-btn + .scope-btn { border-left: 1px solid var(--line); }
+.scope-btn[aria-pressed="true"] {
+  background: var(--focus-soft);
+  color: var(--focus);
+  font-weight: 600;
+}
+.scope-btn:hover { color: var(--fg); }
+
+/* section labels inside the combined (titles + contents) result list */
+.group-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--fg-faint);
+  padding: .6rem 1rem .3rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky; top: 0;
+}
 
 .bar-right { display: flex; align-items: center; gap: .5rem; }
 .icon-btn {

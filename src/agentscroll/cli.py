@@ -187,6 +187,7 @@ def cmd_show(args: argparse.Namespace) -> int:
             sess,
             include_reasoning=args.reasoning,
             include_tools=not args.no_tools,
+            markdown=not args.no_markdown,
         )
         return 0
     text = export.to_text(
@@ -296,6 +297,12 @@ def cmd_web(args: argparse.Namespace) -> int:
 
     app = create_app()
     url = f"http://{args.host}:{args.port}"
+
+    # Desktop "app window" mode: run the server in a background thread and
+    # show it in a native window via pywebview (optional dependency).
+    if getattr(args, "app", False):
+        return _run_app_window(app, args, url)
+
     _eprint(f"agentscroll web -> {url}  (read-only; Ctrl-C to stop)")
     if not args.no_browser:
         import threading
@@ -303,6 +310,32 @@ def cmd_web(args: argparse.Namespace) -> int:
 
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
+def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
+    try:
+        import webview  # pywebview
+    except ModuleNotFoundError:
+        _eprint(
+            "the desktop app window needs pywebview. install with:\n"
+            '    pip install "agentscroll[app]"\n'
+            "or just run without --app to use your browser."
+        )
+        return 1
+    import threading
+
+    import uvicorn
+
+    server = uvicorn.Server(
+        uvicorn.Config(app, host=args.host, port=args.port, log_level="warning")
+    )
+    t = threading.Thread(target=server.run, daemon=True)
+    t.start()
+    _eprint(f"agentscroll app -> {url}  (read-only; close the window to quit)")
+    webview.create_window("agentscroll", url, width=1280, height=860)
+    webview.start()
+    server.should_exit = True
     return 0
 
 
@@ -350,6 +383,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("selector", help="session id / prefix / source:id / latest")
     sp.add_argument("--reasoning", action="store_true", help="include reasoning blocks")
     sp.add_argument("--no-tools", action="store_true", help="hide tool calls/outputs")
+    sp.add_argument("--no-markdown", action="store_true",
+                    help="render text as plain (no markdown formatting)")
     sp.add_argument("--plain", action="store_true", help="disable colour output")
     sp.set_defaults(func=cmd_show)
 
@@ -397,6 +432,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--host", default="127.0.0.1", help="bind host (default localhost)")
     sp.add_argument("-p", "--port", type=int, default=8765, help="port (default 8765)")
     sp.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    sp.add_argument("--app", action="store_true",
+                    help="open in a native desktop window (needs the 'app' extra)")
     sp.set_defaults(func=cmd_web)
 
     return p
