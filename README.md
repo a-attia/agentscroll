@@ -72,17 +72,40 @@ agentscroll web -p 9000 --no-browser      # custom port, don't auto-open
 ### Web app
 
 `agentscroll web` starts a local, read-only browser UI (FastAPI + a
-small vanilla-JS frontend) bound to `127.0.0.1` by default. It provides:
+small vanilla-JS frontend, no build step) bound to `127.0.0.1` by default.
 
-- a session list with source filters and title filtering,
-- global content search across all sessions (highlighted snippets),
-- a rich transcript reader with `reasoning` / `tools` toggles,
-- per-session export (Markdown / HTML / JSON) and copy-to-clipboard.
+Features:
+
+- **Session list** with clear source filter chips, title filtering, and
+  date filters (since / until); loads incrementally with **infinite
+  scroll**.
+- **Subagents** are collapsed under their parent and expand on demand.
+- **Global content search** across all sessions (highlighted snippets);
+  clicking a hit opens the session at the matching message.
+- **Transcript reader** that loads **lazily in windows** so even very
+  large sessions (tens of thousands of messages) open instantly without
+  freezing; more messages load as you scroll.
+- **Find in transcript** (highlight + next/prev), `reasoning` / `tools`
+  toggles, token/branch/model metadata, copy-session-id.
+- **Export** (Markdown / HTML / JSON) and **copy to clipboard** per
+  session.
+- **Light / dark theme** (follows the system, with a manual toggle).
+- **Keyboard navigation**: `/` focus search, `j` / `k` move through the
+  list, `Enter` open, `f` find-in-transcript, `Esc` blur.
 
 Deep links: the open session is reflected in the URL hash
 (`#opencode/<id>`), and `?q=<text>` pre-fills a content search.
 
 Install the web extra first: `pip install -e ".[web]"`.
+
+#### How huge sessions stay fast
+
+The web API separates a cheap **metadata** endpoint
+(`/api/sessions/{source}/{id}/meta`) from a **windowed messages**
+endpoint (`/api/sessions/{source}/{id}/messages?offset&limit`). The
+frontend fetches the header first, then pages messages in as you scroll,
+so the browser never receives or renders an entire multi-megabyte
+transcript at once.
 
 ### Selectors
 

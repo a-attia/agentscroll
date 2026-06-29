@@ -31,7 +31,13 @@ def session_summary(s: Session) -> dict[str, Any]:
         "model": s.model,
         "agent": s.agent,
         "parent_id": s.parent_id,
+        "is_subagent": s.is_subagent,
         "message_count": s.message_count,
+        "cost": s.cost,
+        "tokens_input": s.tokens_input,
+        "tokens_output": s.tokens_output,
+        "git_branch": (s.raw or {}).get("git_branch"),
+        "children": [session_summary(c) for c in s.children],
     }
 
 

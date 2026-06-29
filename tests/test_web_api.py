@@ -84,11 +84,21 @@ def test_sources(client):
 
 
 def test_sessions_list_and_title_filter(client):
-    allrows = client.get("/api/sessions").json()
-    assert len(allrows) == 2
-    filtered = client.get("/api/sessions?q=First").json()
+    data = client.get("/api/sessions").json()
+    assert set(data) >= {"sessions", "offset", "limit", "has_more"}
+    assert len(data["sessions"]) == 2
+    filtered = client.get("/api/sessions?q=First").json()["sessions"]
     assert len(filtered) == 1
     assert filtered[0]["title"] == "First session"
+
+
+def test_sessions_pagination_has_more(client):
+    page = client.get("/api/sessions?limit=1").json()
+    assert len(page["sessions"]) == 1
+    assert page["has_more"] is True
+    page2 = client.get("/api/sessions?limit=1&offset=1").json()
+    assert len(page2["sessions"]) == 1
+    assert page2["sessions"][0]["id"] != page["sessions"][0]["id"]
 
 
 def test_session_detail_and_404(client):
@@ -97,6 +107,20 @@ def test_session_detail_and_404(client):
     assert len(ok["messages"]) == 1
     missing = client.get("/api/sessions/fake/nope")
     assert missing.status_code == 404
+
+
+def test_session_meta_has_no_messages(client):
+    meta = client.get("/api/sessions/fake/s1/meta").json()
+    assert meta["id"] == "s1"
+    assert "messages" not in meta
+    assert meta["message_count"] == 1
+
+
+def test_session_messages_window(client):
+    data = client.get("/api/sessions/fake/s1/messages?offset=0&limit=10").json()
+    assert set(data) >= {"messages", "has_more"}
+    assert len(data["messages"]) == 1
+    assert data["has_more"] is False
 
 
 def test_search(client):

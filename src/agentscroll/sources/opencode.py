@@ -149,6 +149,11 @@ class OpenCodeSource(Source):
                 )
             )
 
+        return self._session_from_row(srow, tuple(messages), message_count=len(messages))
+
+    def _session_from_row(
+        self, srow: sqlite3.Row, messages: tuple[Message, ...], *, message_count: int
+    ) -> Session:
         return Session(
             id=srow["id"],
             source=self.name,
@@ -159,12 +164,78 @@ class OpenCodeSource(Source):
             model=_parse_model(srow["model"]),
             agent=srow["agent"],
             parent_id=srow["parent_id"],
-            message_count=len(messages),
+            message_count=message_count,
             cost=_col(srow, "cost"),
             tokens_input=_col(srow, "tokens_input"),
             tokens_output=_col(srow, "tokens_output"),
-            messages=tuple(messages),
+            messages=messages,
         )
+
+    # -- windowed loading ---------------------------------------------------
+
+    def load_session_meta(self, session_id: str) -> Session | None:
+        if not self.is_available():
+            return None
+        with self._connect() as conn:
+            srow = conn.execute(
+                "SELECT * FROM session WHERE id = ?", (session_id,)
+            ).fetchone()
+            if srow is None:
+                return None
+            count = conn.execute(
+                "SELECT COUNT(*) AS c FROM message WHERE session_id = ?", (session_id,)
+            ).fetchone()["c"]
+        return self._session_from_row(srow, (), message_count=count)
+
+    def load_messages(
+        self, session_id: str, *, offset: int = 0, limit: int | None = None
+    ) -> list[Message]:
+        if not self.is_available():
+            return []
+        with self._connect() as conn:
+            lim = -1 if limit is None else limit
+            mrows = conn.execute(
+                """
+                SELECT id, time_created, data FROM message
+                WHERE session_id = ?
+                ORDER BY time_created, id
+                LIMIT ? OFFSET ?
+                """,
+                (session_id, lim, offset),
+            ).fetchall()
+            if not mrows:
+                return []
+            ids = [mr["id"] for mr in mrows]
+            placeholders = ",".join("?" * len(ids))
+            prows = conn.execute(
+                f"""
+                SELECT id, message_id, time_created, data FROM part
+                WHERE message_id IN ({placeholders})
+                ORDER BY time_created, id
+                """,
+                ids,
+            ).fetchall()
+
+        parts_by_message: dict[str, list[Part]] = {}
+        for pr in prows:
+            part = _to_part(pr["id"], _loads(pr["data"]))
+            if part is not None:
+                parts_by_message.setdefault(pr["message_id"], []).append(part)
+
+        messages: list[Message] = []
+        for mr in mrows:
+            data = _loads(mr["data"])
+            messages.append(
+                Message(
+                    id=mr["id"],
+                    role=data.get("role", "assistant"),
+                    created=_to_dt(mr["time_created"]),
+                    parts=tuple(parts_by_message.get(mr["id"], ())),
+                    model=_model_from_message(data),
+                    raw=data,
+                )
+            )
+        return messages
 
 
 # -- helpers ---------------------------------------------------------------

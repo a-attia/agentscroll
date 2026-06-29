@@ -43,6 +43,38 @@ class Source(abc.ABC):
     def load_session(self, session_id: str) -> Session | None:
         """Return a single session fully populated with messages, or None."""
 
+    def load_session_meta(self, session_id: str) -> Session | None:
+        """Return a single session's metadata only (no messages).
+
+        Used by the web app to show a session header without paying the cost
+        of loading every message. Default implementation loads everything and
+        strips the messages; adapters should override for efficiency.
+        """
+        from dataclasses import replace
+
+        sess = self.load_session(session_id)
+        if sess is None:
+            return None
+        return replace(sess, messages=())
+
+    def load_messages(
+        self, session_id: str, *, offset: int = 0, limit: int | None = None
+    ) -> list[Message]:
+        """Return a slice of a session's messages (for windowed loading).
+
+        Default implementation loads the whole session then slices; adapters
+        should override to avoid loading everything for huge transcripts.
+        """
+        sess = self.load_session(session_id)
+        if sess is None:
+            return []
+        msgs = list(sess.messages)
+        if offset:
+            msgs = msgs[offset:]
+        if limit is not None:
+            msgs = msgs[:limit]
+        return msgs
+
     def resolve_session_id(self, selector: str) -> str | None:
         """Resolve a selector (full id, prefix, or 'latest') to a full id.
 

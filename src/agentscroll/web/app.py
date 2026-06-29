@@ -34,9 +34,26 @@ except ModuleNotFoundError as exc:  # pragma: no cover - guidance path
 
 from pathlib import Path
 
+from datetime import datetime, timezone
+
 from .. import __version__, export
-from ..serialize import search_hit, session_detail, session_summary
+from ..serialize import message_dict, search_hit, session_detail, session_summary
 from ..store import Store
+
+
+def _parse_dt(s: str | None) -> datetime | None:
+    """Parse an ISO date/datetime from a query param; None if blank/invalid."""
+    if not s:
+        return None
+    raw = s.strip()
+    try:
+        if len(raw) == 10:
+            return datetime.strptime(raw, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        iso = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+        dt = datetime.fromisoformat(iso)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -77,28 +94,77 @@ def create_app(store: Store | None = None) -> "FastAPI":
         source: str | None = None,
         dir: str | None = None,
         q: str | None = None,
-        limit: int = Query(default=200, ge=1, le=5000),
-    ) -> list[dict[str, Any]]:
+        since: str | None = None,
+        until: str | None = None,
+        fold: bool = True,
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=60, ge=1, le=2000),
+    ) -> dict[str, Any]:
         st = _store.with_sources([source]) if source else _store
-        sessions = st.list_sessions(directory=dir, query=q, limit=limit)
-        return [session_summary(s) for s in sessions]
+        # Fetch one extra to tell the client whether more pages exist.
+        rows = st.list_sessions(
+            directory=dir, query=q,
+            since=_parse_dt(since), until=_parse_dt(until),
+            offset=offset, limit=limit + 1, fold_subagents=fold,
+        )
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        return {
+            "sessions": [session_summary(s) for s in rows],
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more,
+        }
 
     @app.get("/api/sessions/{source}/{session_id}")
     def api_session_detail(source: str, session_id: str) -> dict[str, Any]:
+        """Full session including all messages. For very large sessions the
+        frontend should prefer the meta + windowed messages endpoints."""
         sess = _store.load_session(session_id, source=source)
         if sess is None:
             raise HTTPException(status_code=404, detail="session not found")
         return session_detail(sess)
 
+    @app.get("/api/sessions/{source}/{session_id}/meta")
+    def api_session_meta(source: str, session_id: str) -> dict[str, Any]:
+        sess = _store.load_session_meta(session_id, source=source)
+        if sess is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        return session_summary(sess)
+
+    @app.get("/api/sessions/{source}/{session_id}/messages")
+    def api_session_messages(
+        source: str,
+        session_id: str,
+        offset: int = Query(default=0, ge=0),
+        limit: int = Query(default=40, ge=1, le=500),
+    ) -> dict[str, Any]:
+        msgs = _store.load_messages(
+            session_id, source=source, offset=offset, limit=limit + 1
+        )
+        has_more = len(msgs) > limit
+        msgs = msgs[:limit]
+        return {
+            "messages": [message_dict(m) for m in msgs],
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more,
+        }
+
     @app.get("/api/search")
     def api_search(
         q: str,
         dir: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
         limit: int = Query(default=100, ge=1, le=2000),
     ) -> list[dict[str, Any]]:
         if not q.strip():
             return []
-        return [search_hit(h) for h in _store.search(q, directory=dir, limit=limit)]
+        hits = _store.search(
+            q, directory=dir, since=_parse_dt(since), until=_parse_dt(until), limit=limit
+        )
+        return [search_hit(h) for h in hits]
 
     @app.get("/api/export/{source}/{session_id}")
     def api_export(

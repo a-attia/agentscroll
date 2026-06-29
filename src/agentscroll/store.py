@@ -94,21 +94,38 @@ class Store:
 
     # -- single session -----------------------------------------------------
 
-    def load_session(self, selector: str, *, source: str | None = None) -> Session | None:
-        """Load one session by selector.
-
-        Selector may be `source:id`, a full id, a unique prefix, or 'latest'.
-        """
+    def _resolve(self, selector: str, source: str | None):
+        """Return (Source, full_id) for a selector, or (None, None)."""
         src_name, sel = _split_selector(selector, source)
         candidates = self._sources if src_name is None else [
             s for s in self._sources if s.name == src_name
         ]
-        # Try resolution within each candidate source.
         for src in candidates:
             full = src.resolve_session_id(sel)
             if full:
-                return src.load_session(full)
-        return None
+                return src, full
+        return None, None
+
+    def load_session_meta(self, selector: str, *, source: str | None = None) -> Session | None:
+        """Load only a session's metadata (no messages) -- cheap for huge ones."""
+        src, full = self._resolve(selector, source)
+        return src.load_session_meta(full) if src else None
+
+    def load_messages(
+        self, selector: str, *, source: str | None = None,
+        offset: int = 0, limit: int | None = None,
+    ) -> list[Message]:
+        """Load a windowed slice of a session's messages."""
+        src, full = self._resolve(selector, source)
+        return src.load_messages(full, offset=offset, limit=limit) if src else []
+
+    def load_session(self, selector: str, *, source: str | None = None) -> Session | None:
+        """Load one session (with all messages) by selector.
+
+        Selector may be `source:id`, a full id, a unique prefix, or 'latest'.
+        """
+        src, full = self._resolve(selector, source)
+        return src.load_session(full) if src else None
 
     # -- search -------------------------------------------------------------
 

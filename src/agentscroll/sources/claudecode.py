@@ -105,6 +105,71 @@ class ClaudeCodeSource(Source):
         candidates = [f for f in self._session_files() if f.stem.startswith(session_id)]
         return candidates[0] if len(candidates) == 1 else None
 
+    # -- windowed loading ---------------------------------------------------
+
+    def load_session_meta(self, session_id: str) -> Session | None:
+        if not self.is_available():
+            return None
+        path = self._find_path(session_id)
+        if path is None:
+            return None
+        meta = _scan_metadata(path)
+        if meta is None:
+            return None
+        return Session(
+            id=meta["session_id"],
+            source=self.name,
+            title=meta["title"],
+            directory=meta["cwd"],
+            created=_to_dt(meta["first_ts"]),
+            updated=_to_dt(meta["last_ts"]),
+            model=meta["model"],
+            message_count=meta["msg_count"],
+            messages=(),
+            raw={"path": str(path), "git_branch": meta["git_branch"]},
+        )
+
+    def load_messages(
+        self, session_id: str, *, offset: int = 0, limit: int | None = None
+    ) -> list[Message]:
+        if not self.is_available():
+            return []
+        path = self._find_path(session_id)
+        if path is None:
+            return []
+        out: list[Message] = []
+        idx = 0          # index among emitted (content-bearing) messages
+        seen = 0         # index among all user/assistant turns
+        for obj in _iter_lines(path):
+            t = obj.get("type")
+            if t not in ("user", "assistant") or obj.get("isMeta"):
+                continue
+            m = obj.get("message", {})
+            if not isinstance(m, dict):
+                continue
+            uuid = obj.get("uuid") or f"{path.stem}:{seen}"
+            seen += 1
+            parts = _content_to_parts(uuid, m.get("content"))
+            if not parts:
+                continue
+            if idx < offset:
+                idx += 1
+                continue
+            out.append(
+                Message(
+                    id=uuid,
+                    role=m.get("role", t),
+                    created=_to_dt(obj.get("timestamp")),
+                    parts=tuple(parts),
+                    model=_clean_model(m.get("model")),
+                    raw=obj,
+                )
+            )
+            idx += 1
+            if limit is not None and len(out) >= limit:
+                break
+        return out
+
 
 # -- parsing helpers -------------------------------------------------------
 

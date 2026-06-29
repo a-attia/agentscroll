@@ -1,6 +1,8 @@
 "use strict";
 
-// ---- tiny helpers --------------------------------------------------------
+// ====================================================================
+// helpers
+// ====================================================================
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, props = {}, ...kids) => {
@@ -9,7 +11,7 @@ const el = (tag, props = {}, ...kids) => {
     if (k === "class") n.className = v;
     else if (k === "dataset") Object.assign(n.dataset, v);
     else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
-    else if (v !== null && v !== undefined) n.setAttribute(k, v);
+    else if (v !== null && v !== undefined && v !== false) n.setAttribute(k, v);
   }
   for (const kid of kids) {
     if (kid == null) continue;
@@ -20,12 +22,20 @@ const el = (tag, props = {}, ...kids) => {
 
 const fmtDate = (iso) => {
   if (!iso) return "?";
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
+  return new Date(iso).toLocaleString(undefined, {
     year: "2-digit", month: "2-digit", day: "2-digit",
     hour: "2-digit", minute: "2-digit",
   });
 };
+
+const fmtTokens = (n) => {
+  if (n == null) return "";
+  if (n < 1000) return String(n);
+  if (n < 1e6) return (n / 1e3).toFixed(1) + "k";
+  return (n / 1e6).toFixed(1) + "M";
+};
+
+const baseName = (p) => (p ? p.split("/").filter(Boolean).slice(-1)[0] || p : "");
 
 const debounce = (fn, ms) => {
   let t;
@@ -46,17 +56,56 @@ function toast(msg) {
   toast._t = setTimeout(() => (t.hidden = true), 2200);
 }
 
-// ---- state ---------------------------------------------------------------
+const srcColor = (name) =>
+  name === "opencode" ? "var(--opencode)"
+  : name === "claudecode" ? "var(--claudecode)"
+  : "var(--focus)";
+const srcSoft = (name) =>
+  name === "opencode" ? "var(--opencode-soft)"
+  : name === "claudecode" ? "var(--claudecode-soft)"
+  : "var(--focus-soft)";
+
+// ====================================================================
+// state
+// ====================================================================
+
+const PAGE = 50;            // session list page size
+const MSG_PAGE = 40;        // transcript message window size
 
 const state = {
   sources: [],
-  enabled: new Set(),     // enabled source names
-  current: null,          // {source, id}
+  enabled: new Set(),
+  mode: "title",            // "title" | "content"
+  query: "",
+  since: "",
+  until: "",
+  // list pagination
+  list: { offset: 0, hasMore: false, loading: false, kind: "sessions" },
+  // open transcript
+  current: null,            // {source, id}
+  msg: { offset: 0, hasMore: false, loading: false },
   reasoning: false,
   tools: true,
 };
 
-// ---- sources + filter chips ---------------------------------------------
+// ====================================================================
+// theme
+// ====================================================================
+
+function initTheme() {
+  const saved = localStorage.getItem("agentscroll-theme");
+  const theme = saved || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  document.documentElement.dataset.theme = theme;
+}
+function toggleTheme() {
+  const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("agentscroll-theme", next);
+}
+
+// ====================================================================
+// sources + filter chips
+// ====================================================================
 
 async function loadSources() {
   state.sources = await getJSON("/api/sources");
@@ -69,121 +118,192 @@ async function loadSources() {
         "aria-pressed": "true",
         dataset: { source: s.name },
         title: s.location || s.name,
+        style: `--src:${srcColor(s.name)};--src-soft:${srcSoft(s.name)}`,
         onclick: (e) => toggleSource(e.currentTarget, s.name),
       },
-        el("span", { class: "dot", style: `background:${srcColor(s.name)}` }),
+        el("span", { class: "dot" }),
+        el("span", { class: "check" }, "\u2713"),
         s.label || s.name
       )
     )
   );
 }
 
-const srcColor = (name) =>
-  name === "opencode" ? "var(--opencode)"
-  : name === "claudecode" ? "var(--claudecode)"
-  : "var(--focus)";
-
 function toggleSource(btn, name) {
   if (state.enabled.has(name)) state.enabled.delete(name);
   else state.enabled.add(name);
-  btn.setAttribute("aria-pressed", state.enabled.has(name) ? "true" : "false");
-  runQuery();
+  const on = state.enabled.has(name);
+  btn.setAttribute("aria-pressed", on ? "true" : "false");
+  btn.querySelector(".check").textContent = on ? "\u2713" : "";
+  resetAndLoad();
 }
 
-// ---- query: title filter (cheap) vs content search (deep) ---------------
+function enabledParam() {
+  // If exactly one source is enabled, pass it to the API for efficiency.
+  return state.enabled.size === 1 ? [...state.enabled][0] : null;
+}
+
+// ====================================================================
+// query / search
+// ====================================================================
 
 const searchInput = $("#search-input");
 const searchModeKbd = $("#search-mode");
-let mode = "title"; // "title" | "content"
 
-function detectMode(q) {
-  // Lead with a space to force deep content search; otherwise filter titles.
-  return q.startsWith(" ") ? "content" : "title";
+function detectMode(raw) {
+  return raw.startsWith(" ") ? "content" : "title";
 }
 
-const runQuery = debounce(async () => {
+const onSearchInput = debounce(() => {
   const raw = searchInput.value;
-  const q = raw.trim();
-  mode = detectMode(raw);
-  searchModeKbd.textContent = mode;
-  const sessions = $("#sessions");
-  sessions.replaceChildren(el("li", { class: "loading" }, "loading\u2026"));
+  state.mode = detectMode(raw);
+  state.query = raw.trim();
+  searchModeKbd.textContent = state.mode;
+  resetAndLoad();
+}, 200);
 
+// ====================================================================
+// session list (paginated + infinite scroll)
+// ====================================================================
+
+const railEl = $("#rail");
+const sessionsEl = $("#sessions");
+
+function resetAndLoad() {
+  state.list.offset = 0;
+  state.list.hasMore = false;
+  sessionsEl.replaceChildren(el("li", { class: "loading" }, "loading\u2026"));
+  loadListPage(true);
+}
+
+async function loadListPage(reset = false) {
+  if (state.list.loading) return;
+  state.list.loading = true;
   try {
-    if (mode === "content" && q) {
-      await renderSearch(q);
+    if (state.mode === "content" && state.query) {
+      await loadSearch(reset);
     } else {
-      await renderSessions(q);
+      await loadSessions(reset);
     }
   } catch (err) {
-    sessions.replaceChildren(el("li", { class: "loading" }, "error: " + err.message));
+    if (reset) sessionsEl.replaceChildren(el("li", { class: "loading" }, "error: " + err.message));
+  } finally {
+    state.list.loading = false;
   }
-}, 180);
-
-function enabledList() {
-  return [...state.enabled];
 }
 
-async function renderSessions(titleQuery) {
-  const params = new URLSearchParams();
-  if (titleQuery) params.set("q", titleQuery);
-  params.set("limit", "500");
-  let rows = await getJSON("/api/sessions?" + params.toString());
-  rows = rows.filter((s) => state.enabled.has(s.source));
-  $("#count").textContent = `${rows.length} session${rows.length === 1 ? "" : "s"}`;
-  const list = $("#sessions");
-  if (!rows.length) {
-    list.replaceChildren(el("li", { class: "loading" }, "no sessions"));
-    return;
+async function loadSessions(reset) {
+  state.list.kind = "sessions";
+  const p = new URLSearchParams({ offset: String(state.list.offset), limit: String(PAGE), fold: "true" });
+  if (state.query) p.set("q", state.query);
+  if (state.since) p.set("since", state.since);
+  if (state.until) p.set("until", state.until);
+  const src = enabledParam();
+  if (src) p.set("source", src);
+
+  const data = await getJSON("/api/sessions?" + p.toString());
+  let rows = data.sessions.filter((s) => state.enabled.has(s.source));
+  state.list.hasMore = data.has_more;
+  state.list.offset += data.sessions.length;
+
+  if (reset) {
+    sessionsEl.replaceChildren();
+    $("#count").textContent = `${rows.length}${data.has_more ? "+" : ""} sessions`;
+  } else {
+    const prev = parseInt($("#count").dataset.n || "0", 10) + rows.length;
+    $("#count").textContent = `${prev}${data.has_more ? "+" : ""} sessions`;
   }
-  list.replaceChildren(...rows.map(sessionRow));
+  $("#count").dataset.n = String((parseInt($("#count").dataset.n || "0", 10)) + rows.length);
+  rows.forEach((s) => sessionsEl.append(sessionRow(s)));
+  if (!sessionsEl.children.length) sessionsEl.append(el("li", { class: "loading" }, "no sessions"));
 }
+
+async function loadSearch(reset) {
+  state.list.kind = "search";
+  // Search is not offset-paginated server-side; fetch a generous cap once.
+  if (!reset) return;
+  const p = new URLSearchParams({ q: state.query, limit: "200" });
+  if (state.since) p.set("since", state.since);
+  if (state.until) p.set("until", state.until);
+  const hits = (await getJSON("/api/search?" + p.toString()))
+    .filter((h) => state.enabled.has(h.source));
+  state.list.hasMore = false;
+  $("#count").textContent = `${hits.length} matches`;
+  $("#count").dataset.n = String(hits.length);
+  sessionsEl.replaceChildren();
+  if (!hits.length) { sessionsEl.append(el("li", { class: "loading" }, "no matches")); return; }
+  hits.forEach((h) => sessionsEl.append(searchRow(h)));
+}
+
+railEl.addEventListener("scroll", () => {
+  if (state.list.kind !== "sessions" || !state.list.hasMore || state.list.loading) return;
+  if (railEl.scrollTop + railEl.clientHeight >= railEl.scrollHeight - 200) {
+    loadListPage(false);
+  }
+});
 
 function sessionRow(s) {
-  const node = el("li", {
+  const li = el("li", {
     class: "session" + (isCurrent(s) ? " active" : ""),
     style: `--src:${srcColor(s.source)}`,
     dataset: { source: s.source, id: s.id },
-    onclick: () => openSession(s.source, s.id),
+    onclick: (e) => { if (e.target.closest(".s-children-toggle")) return; openSession(s.source, s.id); },
   },
-    el("div", { class: "s-title" }, s.title || "(untitled)"),
-    el("div", { class: "s-meta" },
-      el("span", { class: "s-src" }, s.source),
-      el("span", {}, fmtDate(s.updated)),
-      s.message_count != null ? el("span", {}, `${s.message_count} msgs`) : null,
-      s.directory ? el("span", { class: "s-dir", title: s.directory }, baseName(s.directory)) : null
-    )
+    el("div", { class: "s-title", title: s.title }, s.title || "(untitled)"),
+    metaLine(s)
   );
-  return node;
-}
 
-async function renderSearch(q) {
-  const params = new URLSearchParams({ q, limit: "150" });
-  let hits = await getJSON("/api/search?" + params.toString());
-  hits = hits.filter((h) => state.enabled.has(h.source));
-  $("#count").textContent = `${hits.length} match${hits.length === 1 ? "" : "es"}`;
-  const list = $("#sessions");
-  if (!hits.length) {
-    list.replaceChildren(el("li", { class: "loading" }, "no matches"));
-    return;
+  if (s.children && s.children.length) {
+    const childWrap = el("ul", { class: "s-children", hidden: true });
+    s.children.forEach((c) => childWrap.append(childRow(c)));
+    const toggle = el("button", { class: "s-children-toggle",
+      onclick: () => {
+        const open = childWrap.hidden;
+        childWrap.hidden = !open;
+        toggle.firstChild.textContent = open ? "\u25be" : "\u25b8";
+      },
+    }, el("span", {}, "\u25b8"), ` ${s.children.length} subagent${s.children.length === 1 ? "" : "s"}`);
+    li.append(toggle, childWrap);
   }
-  list.replaceChildren(...hits.map((h) => searchRow(h, q)));
+  return li;
 }
 
-function searchRow(h, q) {
+function childRow(c) {
+  return el("li", {
+    class: "s-child" + (isCurrent(c) ? " active" : ""),
+    style: `--src:${srcColor(c.source)}`,
+    dataset: { source: c.source, id: c.id },
+    onclick: () => openSession(c.source, c.id),
+  },
+    el("div", { class: "s-title", title: c.title }, c.title || "(untitled)"),
+    metaLine(c)
+  );
+}
+
+function metaLine(s) {
+  return el("div", { class: "s-meta" },
+    el("span", { class: "s-src" }, s.source),
+    el("span", {}, fmtDate(s.updated)),
+    s.message_count != null ? el("span", {}, `${s.message_count} msgs`) : null,
+    s.tokens_input != null ? el("span", { class: "s-badge", title: "tokens in/out" },
+      `${fmtTokens(s.tokens_input)}/${fmtTokens(s.tokens_output)}`) : null,
+    s.directory ? el("span", { class: "s-dir", title: s.directory }, baseName(s.directory)) : null
+  );
+}
+
+function searchRow(h) {
   return el("li", {
     class: "session",
     style: `--src:${srcColor(h.source)}`,
     dataset: { source: h.source, id: h.session_id },
     onclick: () => openSession(h.source, h.session_id, h.message_id),
   },
-    el("div", { class: "s-title" }, h.title || "(untitled)"),
+    el("div", { class: "s-title", title: h.title }, h.title || "(untitled)"),
     el("div", { class: "s-meta" },
       el("span", { class: "s-src" }, h.source),
       el("span", {}, `[${h.role}]`),
-      h.tool_name ? el("span", {}, h.tool_name) : null
-    ),
-    snippetNode(h.snippet, q)
+      h.tool_name ? el("span", {}, h.tool_name) : null),
+    snippetNode(h.snippet, state.query)
   );
 }
 
@@ -191,8 +311,8 @@ function snippetNode(snippet, q) {
   const div = el("div", { class: "s-snippet" });
   const lc = snippet.toLowerCase();
   const ql = q.trim().toLowerCase();
-  let i = 0, pos;
-  if (ql && (pos = lc.indexOf(ql, i)) !== -1) {
+  let i = 0, pos = ql ? lc.indexOf(ql) : -1;
+  if (pos !== -1) {
     while (pos !== -1) {
       div.append(snippet.slice(i, pos));
       div.append(el("mark", {}, snippet.slice(pos, pos + ql.length)));
@@ -200,200 +320,333 @@ function snippetNode(snippet, q) {
       pos = lc.indexOf(ql, i);
     }
     div.append(snippet.slice(i));
-  } else {
-    div.append(snippet);
-  }
+  } else div.append(snippet);
   return div;
 }
-
-const baseName = (p) => (p ? p.split("/").filter(Boolean).slice(-1)[0] || p : "");
 
 function isCurrent(s) {
   return state.current && state.current.source === s.source && state.current.id === s.id;
 }
+function markActiveRow() {
+  document.querySelectorAll(".session.active, .s-child.active").forEach((n) => n.classList.remove("active"));
+  if (!state.current) return;
+  const sel = `[data-source="${CSS.escape(state.current.source)}"][data-id="${CSS.escape(state.current.id)}"]`;
+  document.querySelectorAll(sel).forEach((n) => n.classList.add("active"));
+}
 
-// ---- transcript reader ---------------------------------------------------
+// ====================================================================
+// transcript reader (meta + windowed messages)
+// ====================================================================
+
+let transcriptMeta = null;
 
 async function openSession(source, id, focusMessageId) {
   state.current = { source, id };
-  // Reflect the open session in the URL hash for deep-linking / reload.
+  state.msg = { offset: 0, hasMore: false, loading: false };
   const hash = `#${source}/${id}`;
   if (location.hash !== hash) history.replaceState(null, "", hash);
   markActiveRow();
-  const reader = $("#reader");
+
   $("#empty").hidden = true;
   const t = $("#transcript");
   t.hidden = false;
   t.replaceChildren(el("div", { class: "loading" }, "loading transcript\u2026"));
-  reader.scrollTop = 0;
+  $("#reader").scrollTop = 0;
 
-  let sess;
+  let meta;
   try {
-    sess = await getJSON(`/api/sessions/${encodeURIComponent(source)}/${encodeURIComponent(id)}`);
+    meta = await getJSON(`/api/sessions/${enc(source)}/${enc(id)}/meta`);
   } catch (err) {
     t.replaceChildren(el("div", { class: "loading" }, "error: " + err.message));
     return;
   }
-  renderTranscript(sess);
-  if (focusMessageId) {
-    const node = t.querySelector(`[data-mid="${CSS.escape(focusMessageId)}"]`);
-    if (node) node.scrollIntoView({ block: "center" });
-  }
+  transcriptMeta = meta;
+  renderHeader(meta);
+  await loadMessages(true, focusMessageId);
 }
 
-function markActiveRow() {
-  document.querySelectorAll(".session.active").forEach((n) => n.classList.remove("active"));
-  if (!state.current) return;
-  const sel = `.session[data-source="${CSS.escape(state.current.source)}"][data-id="${CSS.escape(state.current.id)}"]`;
-  const row = document.querySelector(sel);
-  if (row) row.classList.add("active");
-}
+function enc(s) { return encodeURIComponent(s); }
 
-function renderTranscript(sess) {
+function renderHeader(meta) {
   const t = $("#transcript");
-  t.style.setProperty("--src", srcColor(sess.source));
+  t.style.setProperty("--src", srcColor(meta.source));
+  const copyId = el("button", { class: "copy-id", title: "copy session id",
+    onclick: () => { navigator.clipboard.writeText(meta.id); toast("session id copied"); } },
+    meta.short_id + " \u29c9");
+
   const head = el("div", { class: "t-head" },
-    el("h1", { class: "t-title" }, sess.title || "(untitled)"),
+    el("h1", { class: "t-title" }, meta.title || "(untitled)"),
     el("div", { class: "t-meta" },
-      el("span", { class: "src" }, sess.source),
-      el("span", {}, sess.short_id),
-      sess.model ? el("span", {}, "model: " + sess.model) : null,
-      sess.agent ? el("span", {}, "agent: " + sess.agent) : null,
-      el("span", {}, fmtDate(sess.created)),
-      el("span", {}, `${sess.messages.length} messages`),
-      sess.directory ? el("span", {}, sess.directory) : null
+      el("span", { class: "src" }, meta.source),
+      copyId,
+      meta.model ? el("span", {}, "model: " + meta.model) : null,
+      meta.git_branch ? el("span", {}, "branch: " + meta.git_branch) : null,
+      meta.tokens_input != null ? el("span", {}, `tokens ${fmtTokens(meta.tokens_input)}/${fmtTokens(meta.tokens_output)}`) : null,
+      el("span", {}, fmtDate(meta.created)),
+      el("span", {}, `${meta.message_count} messages`),
+      meta.directory ? el("span", {}, meta.directory) : null
     ),
-    actionBar(sess)
+    findBar(),
+    actionBar(meta)
   );
-  const body = el("div", { class: "t-body" },
-    ...sess.messages.map(messageNode).filter(Boolean));
+  const body = el("div", { class: "t-body", id: "t-body" });
   t.replaceChildren(head, body);
 }
 
-function actionBar(sess) {
-  const exportBtn = (fmt, label) =>
-    el("button", {
-      class: "btn",
-      onclick: () => downloadExport(sess, fmt),
-    }, label);
+function findBar() {
+  const input = el("input", { id: "find-input", type: "search", placeholder: "find in transcript\u2026",
+    autocomplete: "off", spellcheck: "false",
+    oninput: debounce(() => runFind(input.value), 150),
+    onkeydown: (e) => { if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); } } });
+  return el("div", { class: "t-find" },
+    input,
+    el("span", { class: "find-count", id: "find-count" }, ""),
+    el("button", { class: "btn", onclick: () => stepFind(-1) }, "\u2191"),
+    el("button", { class: "btn", onclick: () => stepFind(1) }, "\u2193"));
+}
 
+function actionBar(meta) {
+  const exp = (fmt, label) => el("button", { class: "btn", onclick: () => downloadExport(meta, fmt) }, label);
   return el("div", { class: "t-actions" },
-    el("button", { class: "btn", onclick: () => copySession(sess, "markdown") },
+    el("button", { class: "btn", onclick: () => copySession(meta, "markdown") },
       "copy ", el("span", { class: "k" }, "md")),
-    exportBtn("markdown", "\u2193 md"),
-    exportBtn("html", "\u2193 html"),
-    exportBtn("json", "\u2193 json"),
+    exp("markdown", "\u2193 md"), exp("html", "\u2193 html"), exp("json", "\u2193 json"),
     el("div", { class: "toggle-group" },
-      el("button", {
-        class: "btn", "aria-pressed": String(state.reasoning),
-        onclick: (e) => { state.reasoning = !state.reasoning; e.currentTarget.setAttribute("aria-pressed", String(state.reasoning)); renderTranscript(sess); },
-      }, "reasoning"),
-      el("button", {
-        class: "btn", "aria-pressed": String(state.tools),
-        onclick: (e) => { state.tools = !state.tools; e.currentTarget.setAttribute("aria-pressed", String(state.tools)); renderTranscript(sess); },
-      }, "tools")
-    )
-  );
+      el("button", { class: "btn", "aria-pressed": String(state.reasoning),
+        onclick: (e) => { state.reasoning = !state.reasoning; e.currentTarget.setAttribute("aria-pressed", String(state.reasoning)); rerenderMessages(); } }, "reasoning"),
+      el("button", { class: "btn", "aria-pressed": String(state.tools),
+        onclick: (e) => { state.tools = !state.tools; e.currentTarget.setAttribute("aria-pressed", String(state.tools)); rerenderMessages(); } }, "tools")));
+}
+
+let loadedMessages = [];   // accumulates message objects as we page
+
+async function loadMessages(reset, focusMessageId) {
+  if (state.msg.loading) return;
+  state.msg.loading = true;
+  const body = $("#t-body");
+  if (reset) { loadedMessages = []; body.replaceChildren(el("div", { class: "loading" }, "loading messages\u2026")); }
+  try {
+    const { source, id } = state.current;
+    const p = new URLSearchParams({ offset: String(state.msg.offset), limit: String(MSG_PAGE) });
+    const data = await getJSON(`/api/sessions/${enc(source)}/${enc(id)}/messages?` + p.toString());
+    state.msg.hasMore = data.has_more;
+    state.msg.offset += data.messages.length;
+    loadedMessages.push(...data.messages);
+    renderMessages(reset);
+    if (focusMessageId) {
+      const node = body.querySelector(`[data-mid="${CSS.escape(focusMessageId)}"]`);
+      if (node) node.scrollIntoView({ block: "center" });
+    }
+  } catch (err) {
+    if (reset) body.replaceChildren(el("div", { class: "loading" }, "error: " + err.message));
+  } finally {
+    state.msg.loading = false;
+  }
+}
+
+function renderMessages(reset) {
+  const body = $("#t-body");
+  if (reset) body.replaceChildren();
+  else body.querySelector(".load-more")?.remove();
+
+  const start = body.querySelectorAll(".msg").length;
+  for (let i = start; i < loadedMessages.length; i++) {
+    const node = messageNode(loadedMessages[i]);
+    if (node) body.append(node);
+  }
+  if (state.msg.hasMore) {
+    body.append(el("button", { class: "load-more",
+      onclick: () => loadMessages(false) },
+      `load more (${state.msg.offset} of ${transcriptMeta.message_count} loaded)`));
+  }
+}
+
+function rerenderMessages() {
+  // Re-render already-loaded messages in place (toggle reasoning/tools).
+  const body = $("#t-body");
+  if (!body) return;
+  body.querySelectorAll(".msg").forEach((n) => n.remove());
+  const more = body.querySelector(".load-more");
+  loadedMessages.forEach((m) => { const n = messageNode(m); if (n) more ? body.insertBefore(n, more) : body.append(n); });
+  if (findState.term) runFind(findState.term);
 }
 
 function messageNode(m) {
   const parts = [];
   for (const p of m.parts) {
-    if (p.type === "text" && p.text) {
-      parts.push(el("div", { class: "part text" }, el("pre", {}, p.text)));
-    } else if (p.type === "reasoning" && state.reasoning && p.text) {
-      parts.push(el("div", { class: "part reasoning" },
-        el("span", { class: "tag" }, "reasoning"), el("pre", {}, p.text)));
-    } else if (p.type === "tool" && state.tools && p.text) {
+    if (p.type === "text" && p.text) parts.push(el("div", { class: "part text" }, el("pre", {}, p.text)));
+    else if (p.type === "reasoning" && state.reasoning && p.text)
+      parts.push(el("div", { class: "part reasoning" }, el("span", { class: "tag" }, "reasoning"), el("pre", {}, p.text)));
+    else if (p.type === "tool" && state.tools && p.text) {
       const err = p.tool_status === "error";
       parts.push(el("div", { class: "part tool" + (err ? " is-error" : "") },
-        el("span", { class: "tag" }, p.tool_name || p.tool_status || "tool"),
-        el("pre", {}, p.text)));
+        el("span", { class: "tag" }, p.tool_name || p.tool_status || "tool"), el("pre", {}, p.text)));
     }
   }
   if (!parts.length) return null;
   const cls = m.role === "user" ? "user" : "assistant";
   return el("div", { class: "msg " + cls, dataset: { mid: m.id } },
-    el("div", { class: "m-role" },
-      el("span", {}, m.role),
+    el("div", { class: "m-role" }, el("span", {}, m.role),
       m.created ? el("span", { class: "m-time" }, fmtDate(m.created)) : null),
     ...parts);
 }
 
-// ---- export / copy -------------------------------------------------------
-
-function exportUrl(sess, fmt, download) {
-  const p = new URLSearchParams({
-    format: fmt,
-    reasoning: String(state.reasoning),
-    tools: String(state.tools),
-  });
-  if (download) p.set("download", "true");
-  return `/api/export/${encodeURIComponent(sess.source)}/${encodeURIComponent(sess.id)}?${p}`;
-}
-
-function downloadExport(sess, fmt) {
-  const a = el("a", { href: exportUrl(sess, fmt, true) });
-  document.body.append(a);
-  a.click();
-  a.remove();
-}
-
-async function copySession(sess, fmt) {
-  try {
-    const r = await fetch(exportUrl(sess, fmt, false));
-    const text = await r.text();
-    await navigator.clipboard.writeText(text);
-    toast(`copied ${text.length} chars (${fmt})`);
-  } catch (err) {
-    toast("copy failed: " + err.message);
-  }
-}
-
-// ---- keyboard ------------------------------------------------------------
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "/" && document.activeElement !== searchInput) {
-    e.preventDefault();
-    searchInput.focus();
-    searchInput.select();
-  } else if (e.key === "Escape" && document.activeElement === searchInput) {
-    searchInput.blur();
+// auto-load more messages as the reader scrolls near the bottom
+$("#reader").addEventListener("scroll", () => {
+  const r = $("#reader");
+  if (state.current && state.msg.hasMore && !state.msg.loading) {
+    if (r.scrollTop + r.clientHeight >= r.scrollHeight - 400) loadMessages(false);
   }
 });
 
-searchInput.addEventListener("input", runQuery);
+// ====================================================================
+// in-transcript find
+// ====================================================================
 
-// ---- boot ----------------------------------------------------------------
+const findState = { term: "", hits: [], idx: -1 };
+
+function clearFindMarks() {
+  document.querySelectorAll("mark.find-hit").forEach((m) => {
+    const parent = m.parentNode;
+    parent.replaceChild(document.createTextNode(m.textContent), m);
+    parent.normalize();
+  });
+}
+
+function runFind(term) {
+  clearFindMarks();
+  findState.term = term;
+  findState.hits = [];
+  findState.idx = -1;
+  const tl = term.trim().toLowerCase();
+  if (!tl) { $("#find-count").textContent = ""; return; }
+  const body = $("#t-body");
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  const targets = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.parentElement.closest("mark")) continue;
+    if (node.nodeValue.toLowerCase().includes(tl)) targets.push(node);
+  }
+  for (const text of targets) {
+    const frag = document.createDocumentFragment();
+    const val = text.nodeValue;
+    const low = val.toLowerCase();
+    let i = 0, pos = low.indexOf(tl);
+    while (pos !== -1) {
+      if (pos > i) frag.append(val.slice(i, pos));
+      const mark = el("mark", { class: "find-hit" }, val.slice(pos, pos + tl.length));
+      frag.append(mark);
+      findState.hits.push(mark);
+      i = pos + tl.length;
+      pos = low.indexOf(tl, i);
+    }
+    if (i < val.length) frag.append(val.slice(i));
+    text.parentNode.replaceChild(frag, text);
+  }
+  $("#find-count").textContent = findState.hits.length ? `${findState.hits.length} found` : "no matches";
+  if (findState.hits.length) stepFind(1);
+}
+
+function stepFind(dir) {
+  if (!findState.hits.length) return;
+  if (findState.idx >= 0) findState.hits[findState.idx]?.classList.remove("current");
+  findState.idx = (findState.idx + dir + findState.hits.length) % findState.hits.length;
+  const cur = findState.hits[findState.idx];
+  cur.classList.add("current");
+  cur.scrollIntoView({ block: "center" });
+  $("#find-count").textContent = `${findState.idx + 1} / ${findState.hits.length}`;
+}
+
+// ====================================================================
+// export / copy
+// ====================================================================
+
+function exportUrl(meta, fmt, download) {
+  const p = new URLSearchParams({ format: fmt, reasoning: String(state.reasoning), tools: String(state.tools) });
+  if (download) p.set("download", "true");
+  return `/api/export/${enc(meta.source)}/${enc(meta.id)}?${p}`;
+}
+function downloadExport(meta, fmt) {
+  const a = el("a", { href: exportUrl(meta, fmt, true) });
+  document.body.append(a); a.click(); a.remove();
+}
+async function copySession(meta, fmt) {
+  try {
+    const r = await fetch(exportUrl(meta, fmt, false));
+    const text = await r.text();
+    await navigator.clipboard.writeText(text);
+    toast(`copied ${text.length} chars (${fmt})`);
+  } catch (err) { toast("copy failed: " + err.message); }
+}
+
+// ====================================================================
+// keyboard navigation
+// ====================================================================
+
+function rowList() {
+  return [...document.querySelectorAll(".session, .s-child")].filter((n) => n.offsetParent !== null);
+}
+function moveSelection(dir) {
+  const rows = rowList();
+  if (!rows.length) return;
+  let idx = rows.findIndex((r) => r.classList.contains("kbd-sel"));
+  rows.forEach((r) => r.classList.remove("kbd-sel"));
+  idx = Math.max(0, Math.min(rows.length - 1, (idx === -1 ? 0 : idx + dir)));
+  const row = rows[idx];
+  row.classList.add("kbd-sel");
+  row.style.outline = "1px solid var(--focus)";
+  setTimeout(() => (row.style.outline = ""), 600);
+  row.scrollIntoView({ block: "nearest" });
+}
+function openSelection() {
+  const row = document.querySelector(".session.kbd-sel, .s-child.kbd-sel") || rowList()[0];
+  if (row) openSession(row.dataset.source, row.dataset.id);
+}
+
+document.addEventListener("keydown", (e) => {
+  const typing = ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
+  if (e.key === "/" && !typing) { e.preventDefault(); searchInput.focus(); searchInput.select(); return; }
+  if (typing) {
+    if (e.key === "Escape") document.activeElement.blur();
+    return;
+  }
+  if (e.key === "j") { e.preventDefault(); moveSelection(1); }
+  else if (e.key === "k") { e.preventDefault(); moveSelection(-1); }
+  else if (e.key === "Enter") { e.preventDefault(); openSelection(); }
+  else if (e.key === "f" && state.current) {
+    e.preventDefault(); $("#find-input")?.focus();
+  }
+});
+
+// ====================================================================
+// boot
+// ====================================================================
+
+searchInput.addEventListener("input", onSearchInput);
+$("#theme-toggle").addEventListener("click", toggleTheme);
+$("#since").addEventListener("change", (e) => { state.since = e.target.value; resetAndLoad(); });
+$("#until").addEventListener("change", (e) => { state.until = e.target.value; resetAndLoad(); });
 
 function openFromHash() {
   const h = decodeURIComponent(location.hash.replace(/^#/, ""));
   const slash = h.indexOf("/");
-  if (slash > 0) {
-    const source = h.slice(0, slash);
-    const id = h.slice(slash + 1);
-    if (source && id) openSession(source, id);
-  }
+  if (slash > 0) openSession(h.slice(0, slash), h.slice(slash + 1));
 }
-
 function prefillSearchFromUrl() {
-  const params = new URLSearchParams(location.search);
-  const q = params.get("q");
-  if (q) {
-    // Lead with a space to engage deep content search mode.
-    searchInput.value = " " + q;
-    return true;
-  }
+  const q = new URLSearchParams(location.search).get("q");
+  if (q) { searchInput.value = " " + q; state.mode = "content"; state.query = q; searchModeKbd.textContent = "content"; return true; }
   return false;
 }
 
 (async function boot() {
+  initTheme();
   try {
     await loadSources();
-    const prefilled = prefillSearchFromUrl();
-    await runQuery();
+    prefillSearchFromUrl();
+    await loadListPage(true);
     if (location.hash) openFromHash();
   } catch (err) {
-    $("#sessions").replaceChildren(el("li", { class: "loading" }, "failed to load: " + err.message));
+    sessionsEl.replaceChildren(el("li", { class: "loading" }, "failed to load: " + err.message));
   }
 })();

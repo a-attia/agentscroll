@@ -14,11 +14,24 @@
     </div>
     <div class="search">
       <input id="search-input" type="search" autocomplete="off" spellcheck="false"
-             placeholder="search across all sessions&hellip;  (/ to focus)" />
+             placeholder="filter titles&hellip;  (lead with a space to search inside transcripts)" />
       <kbd id="search-mode">title</kbd>
     </div>
-    <div class="srcfilter" id="srcfilter"></div>
+    <div class="bar-right">
+      <button id="theme-toggle" class="icon-btn" title="Toggle light / dark">&#9681;</button>
+    </div>
   </header>
+
+  <div class="filters">
+    <span class="filters-label">showing</span>
+    <div class="srcfilter" id="srcfilter"></div>
+    <div class="date-filters">
+      <label for="since">since</label>
+      <input id="since" type="date" />
+      <label for="until">until</label>
+      <input id="until" type="date" />
+    </div>
+  </div>
 
   <main class="layout">
     <aside class="rail" id="rail">
