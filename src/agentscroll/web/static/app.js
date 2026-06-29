@@ -410,6 +410,7 @@ function actionBar(meta) {
   return el("div", { class: "t-actions" },
     el("button", { class: "btn", onclick: () => copySession(meta, "markdown") },
       "copy ", el("span", { class: "k" }, "md")),
+    el("button", { class: "btn", onclick: () => printSession(meta) }, "\u2399 print"),
     exp("markdown", "\u2193 md"), exp("html", "\u2193 html"), exp("json", "\u2193 json"),
     el("div", { class: "toggle-group" },
       el("button", { class: "btn", "aria-pressed": String(state.reasoning),
@@ -471,6 +472,29 @@ function rerenderMessages() {
   if (findState.term) runFind(findState.term);
 }
 
+function messageToText(m) {
+  // Plain-text rendering of a single message, honouring current toggles.
+  const lines = [];
+  for (const p of m.parts) {
+    if (p.type === "text" && p.text) lines.push(p.text);
+    else if (p.type === "reasoning" && state.reasoning && p.text) lines.push("[reasoning] " + p.text);
+    else if (p.type === "tool" && state.tools && p.text)
+      lines.push(`[${p.tool_name || p.tool_status || "tool"}] ${p.text}`);
+  }
+  return lines.join("\n\n");
+}
+
+async function copyMessage(m, btn) {
+  const text = messageToText(m);
+  try {
+    await navigator.clipboard.writeText(text);
+    const prev = btn.textContent;
+    btn.textContent = "\u2713";
+    setTimeout(() => (btn.textContent = prev), 1100);
+    toast(`copied message (${text.length} chars)`);
+  } catch (err) { toast("copy failed: " + err.message); }
+}
+
 function messageNode(m) {
   const parts = [];
   for (const p of m.parts) {
@@ -485,7 +509,12 @@ function messageNode(m) {
   }
   if (!parts.length) return null;
   const cls = m.role === "user" ? "user" : "assistant";
+  const copyBtn = el("button", {
+    class: "msg-copy", title: "copy this message",
+    onclick: (e) => { e.stopPropagation(); copyMessage(m, e.currentTarget); },
+  }, "\u29c9");
   return el("div", { class: "msg " + cls, dataset: { mid: m.id } },
+    copyBtn,
     el("div", { class: "m-role" }, el("span", {}, m.role),
       m.created ? el("span", { class: "m-time" }, fmtDate(m.created)) : null),
     ...parts);
@@ -578,6 +607,33 @@ async function copySession(meta, fmt) {
     await navigator.clipboard.writeText(text);
     toast(`copied ${text.length} chars (${fmt})`);
   } catch (err) { toast("copy failed: " + err.message); }
+}
+
+async function printSession(meta) {
+  // Render the full session as standalone HTML (server-side, print-friendly)
+  // into a hidden iframe, then invoke the browser's print dialog. Using an
+  // iframe (rather than window.open) avoids popup blockers.
+  toast("preparing print\u2026");
+  let html;
+  try {
+    const r = await fetch(exportUrl(meta, "html", false));
+    html = await r.text();
+  } catch (err) { toast("print failed: " + err.message); return; }
+
+  const frame = el("iframe", { class: "print-frame", "aria-hidden": "true" });
+  document.body.append(frame);
+  const doc = frame.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+  const go = () => {
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+    setTimeout(() => frame.remove(), 1000);
+  };
+  // Wait for the iframe document to finish laying out before printing.
+  if (doc.readyState === "complete") setTimeout(go, 150);
+  else frame.onload = () => setTimeout(go, 150);
 }
 
 // ====================================================================
