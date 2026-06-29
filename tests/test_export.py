@@ -76,6 +76,22 @@ def test_html_escapes_and_structures():
     assert 'class="msg assistant"' in html
 
 
+def test_html_renders_markdown_in_text_parts():
+    # Build a session whose assistant text contains markdown.
+    md_text = "## Heading\n\nUse `ls` and:\n\n```bash\nls -la\n```\n"
+    msg = Message(
+        id="m1", role="assistant", created=None,
+        parts=(Part(id="p1", type="text", text=md_text),),
+    )
+    s = Session(id="s", source="opencode", title="t", directory=None,
+                created=None, updated=None, messages=(msg,), message_count=1)
+    html = export.to_html(s)
+    assert "<h2>Heading</h2>" in html
+    assert "<code>ls</code>" in html
+    assert 'class="language-bash"' in html
+    assert 'class="md"' in html
+
+
 def test_text_default_hides_reasoning():
     txt = export.to_text(_sample_session())
     assert "They want ls." not in txt  # reasoning off by default

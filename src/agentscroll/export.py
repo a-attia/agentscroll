@@ -11,6 +11,7 @@ import json
 from dataclasses import asdict
 from datetime import datetime
 
+from . import minimd
 from .models import Message, Part, Session
 
 _ROLE_LABEL = {
@@ -152,6 +153,29 @@ body {{ font: 15px/1.6 -apple-system, system-ui, sans-serif; max-width: 820px;
          margin: .5rem 0; }}
 pre {{ white-space: pre-wrap; word-break: break-word; margin: .25rem 0; }}
 .tool-name {{ font-size: 12px; font-weight: 600; opacity: .7; }}
+/* rendered markdown */
+.md > *:first-child {{ margin-top: 0; }}
+.md > *:last-child {{ margin-bottom: 0; }}
+.md h1, .md h2, .md h3, .md h4 {{ line-height: 1.3; margin: 1em 0 .4em; }}
+.md h1 {{ font-size: 1.5em; }} .md h2 {{ font-size: 1.3em; }}
+.md h3 {{ font-size: 1.12em; }} .md h4 {{ font-size: 1em; }}
+.md p {{ margin: .5em 0; }}
+.md ul, .md ol {{ margin: .4em 0; padding-left: 1.5em; }}
+.md li {{ margin: .15em 0; }}
+.md a {{ color: #2a6fb0; }}
+.md blockquote {{ margin: .5em 0; padding: .15em 0 .15em 1em;
+                  border-left: 3px solid #ccc; color: #777; }}
+.md hr {{ border: none; border-top: 1px solid #ccc; margin: 1em 0; }}
+.md code {{ font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .88em;
+            background: rgba(127,127,127,.18); border-radius: 4px; padding: .1em .35em; }}
+.md pre {{ background: rgba(127,127,127,.12); border: 1px solid rgba(127,127,127,.25);
+           border-radius: 8px; padding: .7rem .9rem; overflow-x: auto; }}
+.md pre code {{ background: none; padding: 0; }}
+@media print {{
+  body {{ max-width: none; }}
+  .msg {{ break-inside: avoid; }}
+  .tool, .md pre {{ break-inside: avoid; }}
+}}
 </style></head><body>
 <h1>{title}</h1>
 <div class="meta">{meta}</div>
@@ -191,7 +215,8 @@ def _html_message(msg: Message, include_reasoning: bool, include_tools: bool) ->
     inner: list[str] = []
     for part in msg.parts:
         if part.type == "text" and part.text:
-            inner.append(f"<pre>{_html.escape(part.text)}</pre>")
+            # Render markdown (stdlib-only) so the static export reads nicely.
+            inner.append(f'<div class="md">{minimd.render(part.text)}</div>')
         elif part.type == "reasoning" and include_reasoning and part.text:
             inner.append(f'<div class="reasoning"><pre>{_html.escape(part.text)}</pre></div>')
         elif part.type == "tool" and include_tools and part.text:
