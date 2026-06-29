@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentscroll"
+version = "0.1.0"
+description = "Navigate, search, copy, and export your AI coding-agent sessions (opencode, Claude Code, ...) from one local, read-only tool."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ahmed Attia" }]
+keywords = [
+    "opencode",
+    "claude-code",
+    "ai-agent",
+    "session-history",
+    "transcript",
+    "cli",
+    "local-first",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Utilities",
+]
+# Zero required runtime dependencies: the CLI core uses only the stdlib
+# (sqlite3, json, argparse). Optional extras pull in the web app + niceties.
+dependencies = []
+
+[project.optional-dependencies]
+web = ["fastapi>=0.110", "uvicorn>=0.29", "jinja2>=3.1"]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.scripts]
+agentscroll = "agentscroll.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/attia/agentscroll"
+Repository = "https://github.com/attia/agentscroll"
+Issues = "https://github.com/attia/agentscroll/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentscroll"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
