@@ -11,15 +11,19 @@ or a local web app.
 Everything is local-first and strictly **read-only**: scrollback never
 modifies, locks for writing, or uploads your data.
 
-![The scrollback web app: a session list beside a transcript with rendered
-Markdown, syntax-highlighted code, and typeset LaTeX math.](assets/screenshots/web.png)
+You can use it two ways. From the **command line**, list, search, and export
+your sessions in a single scriptable tool:
 
-<p align="center"><em>The local web app — transcript reading with typeset
-math, syntax highlighting, and per-session export. (Synthetic demo data.)</em></p>
+![scrollback listing recent sessions in the terminal.](assets/screenshots/cli.svg)
 
-It is equally at home on the command line:
+Or open the **local web app** to read a transcript in full — with rendered
+Markdown, syntax-highlighted code, and typeset LaTeX math:
 
-![scrollback list output in the terminal.](assets/screenshots/cli.svg)
+![The scrollback web app showing a session list beside a transcript with
+rendered Markdown, highlighted code, and typeset equations.](assets/screenshots/web.png)
+
+Both views read the same on-disk session stores, so you can jump between
+them freely. (The screenshots above use synthetic demo data.)
 
 > **For AI agents:** read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
 > project conventions. This README is for human readers.
