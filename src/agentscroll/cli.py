@@ -103,6 +103,70 @@ def cmd_sources(args: argparse.Namespace) -> int:
     return 0 if any_found else 1
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    """Print a diagnostics summary: sources, index, optional features, env."""
+    import platform
+
+    from . import __version__, fts
+
+    print(f"agentscroll {__version__}")
+    print(f"python {platform.python_version()}  ({platform.system()} {platform.machine()})")
+    import sqlite3
+
+    print(f"sqlite {sqlite3.sqlite_version}")
+    print()
+
+    print("sources:")
+    store = Store()
+    any_avail = False
+    for src in registry.all_sources():
+        avail = src.is_available()
+        any_avail = any_avail or avail
+        loc = src.location()
+        if avail:
+            try:
+                n = len(list(src.list_sessions()))
+            except Exception:
+                n = "?"
+            print(f"  {src.name:12} available   {n} sessions   {loc}")
+        else:
+            print(f"  {src.name:12} not found   (looked in default location)")
+    if not any_avail:
+        print("  (none detected -- see 'agentscroll doctor' notes below)")
+    print()
+
+    print("optional features:")
+    print(f"  full-text search (FTS5): {'yes' if fts.fts5_available() else 'no'}")
+    index = fts.FtsIndex()
+    if index.exists():
+        s = index.stats()
+        stale = "stale" if index.is_stale(store) else "fresh"
+        print(f"  search index: built ({s['sessions']} sessions, {s['parts']} parts, {stale})")
+        print(f"                {index.path}")
+    else:
+        print("  search index: not built (run 'agentscroll index' for faster search)")
+    print(f"  native window (pywebview): {'yes' if _pywebview_available() else 'no'}")
+    print(f"  rich terminal output: {'yes' if _rich_available() else 'no'}")
+    print(f"  web app (fastapi/uvicorn): {'yes' if _web_available() else 'no'}")
+
+    return 0 if any_avail else 1
+
+
+def _rich_available() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("rich") is not None
+
+
+def _web_available() -> bool:
+    import importlib.util
+
+    return (
+        importlib.util.find_spec("fastapi") is not None
+        and importlib.util.find_spec("uvicorn") is not None
+    )
+
+
 def cmd_index(args: argparse.Namespace) -> int:
     from . import fts
 
@@ -180,7 +244,7 @@ def cmd_list(args: argparse.Namespace) -> int:
         fold_subagents=not args.no_fold,
     )
     if not sessions:
-        _eprint("no sessions found")
+        _no_sessions_help(store)
         return 1
     if args.json:
         import json
@@ -272,6 +336,19 @@ def cmd_show(args: argparse.Namespace) -> int:
     )
     print(text)
     return 0
+
+
+def _no_sessions_help(store: Store) -> None:
+    """Explain why a list/search is empty: no sources vs. just no matches."""
+    if not store.sources:
+        _eprint("no AI-agent sessions found -- no supported sources detected.")
+        _eprint("agentscroll reads, by default:")
+        _eprint("  opencode    ~/.local/share/opencode/opencode.db")
+        _eprint("  claudecode  ~/.claude/projects/")
+        _eprint("Override with AGENTSCROLL_OPENCODE_DB / AGENTSCROLL_CLAUDE_DIR.")
+        _eprint("Run 'agentscroll doctor' to see what was detected.")
+    else:
+        _eprint("no sessions matched.")
 
 
 def _maybe_warn_stale_index(store: Store) -> None:
@@ -492,6 +569,99 @@ def _pywebview_available() -> bool:
     return importlib.util.find_spec("webview") is not None
 
 
+def _app_icon_path() -> str | None:
+    """Extract the bundled PNG icon to a temp file and return its path.
+
+    pywebview's `icon` wants a filesystem path; our icon ships as package
+    data, so materialize it once per run.
+    """
+    import tempfile
+    from importlib import resources
+
+    try:
+        data = resources.files("agentscroll.web.static").joinpath("apple-touch-icon.png").read_bytes()
+    except (OSError, ModuleNotFoundError, FileNotFoundError):
+        return None
+    path = os.path.join(tempfile.gettempdir(), "agentscroll-icon.png")
+    try:
+        with open(path, "wb") as fh:
+            fh.write(data)
+    except OSError:
+        return None
+    return path
+
+
+def _app_menu(window) -> list:
+    """A small native menu with a meaningful 'About agentscroll' item.
+
+    Gives a real About entry (version + homepage) even when running
+    unbundled, instead of relying on a generic Python About box.
+    """
+    try:
+        from webview.menu import Menu, MenuAction, MenuSeparator
+    except Exception:
+        return []
+
+    from . import __version__
+
+    def about() -> None:
+        try:
+            window.create_confirmation_dialog(
+                "About agentscroll",
+                f"agentscroll {__version__}\n\n"
+                "Navigate, search, copy, and export your AI coding-agent "
+                "sessions. Local-first and read-only.",
+            )
+        except Exception:
+            pass
+
+    def homepage() -> None:
+        from . import webopen
+
+        webopen.open_window("https://github.com/attia/agentscroll")
+
+    return [
+        Menu("agentscroll", [
+            MenuAction("About agentscroll", about),
+            MenuSeparator(),
+            MenuAction("Project homepage", homepage),
+        ]),
+    ]
+
+
+def _brand_macos_app() -> None:
+    """Make the macOS menu bar say 'agentscroll' (not 'Python').
+
+    The app-menu title comes from the running process's CFBundleName. When we
+    run unbundled (or after the .app runner exec's python), that's 'Python'.
+    We patch the main bundle's info dict and set the Dock icon via PyObjC,
+    which pywebview already depends on for the Cocoa backend.
+    """
+    if sys.platform != "darwin":
+        return
+    try:
+        from Foundation import NSBundle  # type: ignore
+
+        bundle = NSBundle.mainBundle()
+        info = bundle.localizedInfoDictionary() or bundle.infoDictionary()
+        if info is not None:
+            info["CFBundleName"] = "agentscroll"
+            info["CFBundleDisplayName"] = "agentscroll"
+    except Exception:
+        pass  # best-effort cosmetic; never fail the launch
+    # Dock icon (independent of the menu name).
+    icon = _app_icon_path()
+    if icon:
+        try:
+            from AppKit import NSApplication, NSImage  # type: ignore
+
+            img = NSImage.alloc().initByReferencingFile_(icon)
+            if img is not None:
+                NSApplication.sharedApplication().setApplicationIconImage_(img)
+        except Exception:
+            pass
+
+
 def _open_tab(url: str) -> str:
     import webbrowser
 
@@ -590,10 +760,20 @@ def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     t.start()
     _background_index_refresh()
     _eprint(f"agentscroll app -> {url}  (read-only; close the window to quit)")
+    # Set the macOS menu-bar app name + Dock icon to 'agentscroll' (otherwise
+    # an unbundled python process shows up as "Python").
+    _brand_macos_app()
     bridge = _AppBridge(url)
     window = webview.create_window("agentscroll", url, width=1280, height=860, js_api=bridge)
     bridge.window = window
-    webview.start()  # blocks until the window is closed
+    menu = _app_menu(window)
+    icon = _app_icon_path()
+    start_kwargs: dict[str, object] = {}
+    if icon:
+        start_kwargs["icon"] = icon
+    if menu:
+        start_kwargs["menu"] = menu
+    webview.start(**start_kwargs)  # blocks until the window is closed
     # Window closed: stop the server and wait for the port to be released so
     # an immediate relaunch can reuse it.
     server.should_exit = True
@@ -615,6 +795,10 @@ def build_parser() -> argparse.ArgumentParser:
     # sources
     sp = sub.add_parser("sources", help="list detected agents")
     sp.set_defaults(func=cmd_sources)
+
+    # doctor
+    sp = sub.add_parser("doctor", help="diagnostics: sources, index, features, env")
+    sp.set_defaults(func=cmd_doctor)
 
     # index
     sp = sub.add_parser(
