@@ -32,6 +32,25 @@ def _eprint(*a: object) -> None:
     print(*a, file=sys.stderr)
 
 
+def _nonneg_int(s: str) -> int:
+    """argparse type: a non-negative integer (rejects negatives)."""
+    try:
+        v = int(s)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"expected an integer, got {s!r}") from exc
+    if v < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0, got {v}")
+    return v
+
+
+def _positive_int(s: str) -> int:
+    """argparse type: a positive integer (>= 1)."""
+    v = _nonneg_int(s)
+    if v < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1, got {v}")
+    return v
+
+
 def _parse_date(s: str | None) -> datetime | None:
     """Parse a CLI date/datetime into an aware UTC datetime.
 
@@ -311,13 +330,26 @@ def cmd_web(args: argparse.Namespace) -> int:
 
     url = f"http://{args.host}:{port}"
 
+    # If binding to a non-loopback address, warn loudly: the API is
+    # unauthenticated and would expose all local AI history to the network.
+    # Add the chosen host to the Host-guard allowlist so it can be reached.
+    loopback = {"127.0.0.1", "localhost", "::1", "0.0.0.0", ""}
+    allowed_hosts = None
+    if args.host not in loopback:
+        _eprint(f"WARNING: binding to non-loopback host {args.host!r}; the read-only "
+                "API will be reachable from the network with no authentication.")
+        allowed_hosts = [args.host]
+    elif args.host == "0.0.0.0":
+        _eprint("WARNING: binding to 0.0.0.0 exposes the API on all interfaces.")
+        allowed_hosts = []  # can't know the external hostname; disable host guard
+
     # Desktop "app window" mode: a true native window via pywebview. Closing
     # the window quits the process -> server stops -> port is freed, and there
     # is no terminal. If pywebview isn't available, fall back to a browser
     # window (with heartbeat auto-shutdown) instead of failing.
     if getattr(args, "app", False):
         if _pywebview_available():
-            return _run_app_window(create_app(), args, url)
+            return _run_app_window(create_app(allowed_hosts=allowed_hosts), args, url)
         _eprint("native window unavailable (pywebview not installed/usable); "
                 "opening a browser window with auto-shutdown instead")
         args.window = True
@@ -333,9 +365,9 @@ def cmd_web(args: argparse.Namespace) -> int:
             srv.should_exit = True
 
     if getattr(args, "auto_shutdown", False):
-        app = create_app(on_idle=_on_idle, idle_timeout=10.0)
+        app = create_app(on_idle=_on_idle, idle_timeout=10.0, allowed_hosts=allowed_hosts)
     else:
-        app = create_app()
+        app = create_app(allowed_hosts=allowed_hosts)
 
     _eprint(f"agentscroll web -> {url}  (read-only; Ctrl-C to stop)")
     if not args.no_browser:
@@ -450,9 +482,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="only sessions updated on/after DATE (YYYY-MM-DD or ISO)")
     sp.add_argument("--until", type=_parse_date, metavar="DATE",
                     help="only sessions updated on/before DATE")
-    sp.add_argument("-n", "--limit", type=int, default=30, help="max rows (default 30)")
-    sp.add_argument("--offset", type=int, default=0, help="skip N rows (pagination)")
-    sp.add_argument("--page", type=int, help="page number (uses --limit as page size)")
+    sp.add_argument("-n", "--limit", type=_positive_int, default=30, help="max rows (default 30)")
+    sp.add_argument("--offset", type=_nonneg_int, default=0, help="skip N rows (pagination)")
+    sp.add_argument("--page", type=_positive_int, help="page number (uses --limit as page size)")
     sp.add_argument("--usage", action="store_true", help="show cost + token columns")
     sp.add_argument("--no-fold", action="store_true",
                     help="do not nest subagent sessions under their parent")
@@ -480,7 +512,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="only sessions updated on/after DATE")
     sp.add_argument("--until", type=_parse_date, metavar="DATE",
                     help="only sessions updated on/before DATE")
-    sp.add_argument("-n", "--limit", type=int, default=50, help="max hits (default 50)")
+    sp.add_argument("-n", "--limit", type=_positive_int, default=50, help="max hits (default 50)")
     sp.add_argument("--plain", action="store_true", help="disable colour output")
     sp.add_argument("--json", action="store_true", help="JSON output")
     sp.set_defaults(func=cmd_search)

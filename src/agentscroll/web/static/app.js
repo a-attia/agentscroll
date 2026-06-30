@@ -58,11 +58,20 @@ function setupMarkdown() {
 }
 
 function renderMarkdownInto(node, text) {
-  // Render `text` as markdown into `node`. Falls back to plain text if the
-  // markdown library has not loaded yet.
-  if (setupMarkdown()) {
+  // Render `text` as markdown into `node`. Transcript text is UNTRUSTED (the
+  // model/user can write arbitrary HTML/script into a message), so the marked
+  // output MUST be sanitized before it touches innerHTML. We require both
+  // marked and DOMPurify; if either is missing we fall back to plain text so
+  // we never inject unsanitized HTML.
+  if (setupMarkdown() && typeof DOMPurify !== "undefined") {
     node.classList.add("md");
-    node.innerHTML = marked.parse(text);
+    const dirty = marked.parse(text);
+    node.innerHTML = DOMPurify.sanitize(dirty, {
+      // Allow normal markdown output but strip scripts, event handlers, and
+      // dangerous URI schemes. Forbid iframe/object/embed/form outright.
+      FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form"],
+      FORBID_ATTR: ["style"],
+    });
     // Highlight any code blocks marked.highlight missed (older marked APIs).
     if (typeof hljs !== "undefined") {
       node.querySelectorAll("pre code:not(.hljs)").forEach((b) => {

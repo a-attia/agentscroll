@@ -47,9 +47,15 @@ def _to_dt(ms_or_iso: int | float | str | None) -> datetime | None:
             # Handle trailing Z.
             if s.endswith("Z"):
                 s = s[:-1] + "+00:00"
-            return datetime.fromisoformat(s)
+            dt = datetime.fromisoformat(s)
         except ValueError:
             return None
+        # Force tz-awareness: a timezone-less timestamp would otherwise be a
+        # naive datetime, which raises TypeError when sorted alongside the
+        # aware datetimes used elsewhere. Assume UTC when no offset is given.
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
     return None
 
 

@@ -161,7 +161,8 @@ class ClaudeCodeSource(Source):
 
     def _child_override(self, child_id: str, sub_path: Path) -> dict[str, Any]:
         """Title/id/parent override so a loaded subagent keeps its child id."""
-        parent_id, _, _ = child_id.partition(_CHILD_SEP)
+        # rsplit to match _find_path: agent segment is the tail.
+        parent_id = child_id.rsplit(_CHILD_SEP, 1)[0]
         info = _read_meta_json(sub_path)
         title = info.get("description") or sub_path.stem
         if info.get("agentType"):
@@ -177,12 +178,24 @@ class ClaudeCodeSource(Source):
 
     def _find_path(self, session_id: str) -> Path | None:
         # Subagent child id: "<parent>::agent-<id>" -> nested subagents file.
+        # rsplit on the LAST separator: the agent segment is always the tail,
+        # and this is robust even if a parent id ever contained the separator.
         if _CHILD_SEP in session_id:
-            parent_id, agent_id = session_id.split(_CHILD_SEP, 1)
+            parent_id, agent_id = session_id.rsplit(_CHILD_SEP, 1)
+            # Reject path-escaping agent ids before touching the filesystem.
+            if not agent_id or "/" in agent_id or "\\" in agent_id or ".." in agent_id:
+                return None
             parent = self._find_path(parent_id)
             if parent is None:
                 return None
-            cand = parent.with_suffix("") / "subagents" / f"{agent_id}.jsonl"
+            sub_dir = (parent.with_suffix("") / "subagents").resolve()
+            cand = (sub_dir / f"{agent_id}.jsonl").resolve()
+            # Containment check: the resolved candidate must live inside the
+            # parent's subagents directory (defends against traversal).
+            try:
+                cand.relative_to(sub_dir)
+            except ValueError:
+                return None
             return cand if cand.is_file() else None
         for f in self._session_files():
             if f.stem == session_id:
@@ -265,7 +278,9 @@ class ClaudeCodeSource(Source):
 
 def _iter_lines(path: Path) -> Iterator[dict[str, Any]]:
     try:
-        with path.open("r", encoding="utf-8") as fh:
+        # errors="replace": a single invalid UTF-8 byte must not abort the
+        # whole-file iteration (it would silently truncate a session).
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:

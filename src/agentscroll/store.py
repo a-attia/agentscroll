@@ -182,16 +182,26 @@ def _fold(sessions: list[Session]) -> list[Session]:
     """
     from dataclasses import replace
 
-    by_id = {s.id: s for s in sessions}
-    children_of: dict[str, list[Session]] = {}
+    # Key on (source, id): ids are only unique within a source, so keying on
+    # the bare id could mis-link a parent in one source to a child in another.
+    def key(source: str, sid: str) -> tuple[str, str]:
+        return (source, sid)
+
+    by_key = {key(s.source, s.id): s for s in sessions}
+    children_of: dict[tuple[str, str], list[Session]] = {}
     top: list[Session] = []
     for s in sessions:
-        if s.parent_id and s.parent_id in by_id:
-            children_of.setdefault(s.parent_id, []).append(s)
+        parent_key = key(s.source, s.parent_id) if s.parent_id else None
+        # Fold only when the parent exists AND isn't the session itself
+        # (a self-referential parent_id would otherwise drop the session).
+        if parent_key and parent_key != key(s.source, s.id) and parent_key in by_key:
+            children_of.setdefault(parent_key, []).append(s)
         else:
             top.append(s)
     return [
-        replace(s, children=tuple(children_of.get(s.id, ()))) if s.id in children_of else s
+        replace(s, children=tuple(children_of.get(key(s.source, s.id), ())))
+        if key(s.source, s.id) in children_of
+        else s
         for s in top
     ]
 

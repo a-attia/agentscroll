@@ -70,16 +70,29 @@ _EXT = {"markdown": "md", "md": "md", "json": "json", "html": "html",
         "text": "txt", "txt": "txt"}
 
 
-def create_app(store: Store | None = None, *, on_idle=None, idle_timeout: float = 0.0):
+def create_app(
+    store: Store | None = None,
+    *,
+    on_idle=None,
+    idle_timeout: float = 0.0,
+    allowed_hosts: list[str] | None = None,
+):
     """Build the FastAPI app. A custom Store can be injected for tests.
 
     If `idle_timeout` > 0 and `on_idle` is provided, the app runs a watchdog:
     the frontend pings `/api/heartbeat` periodically, and if no ping arrives
     for `idle_timeout` seconds (i.e. the window was closed), `on_idle()` is
     called -- used to auto-stop the server and free the port.
+
+    `allowed_hosts` guards against DNS-rebinding: requests whose Host header's
+    hostname is not in the allowlist are rejected. Defaults to loopback names
+    (localhost / 127.0.0.1 / ::1). Pass an explicit list when binding to a
+    non-loopback address. `None` => loopback-only; an empty list disables the
+    check (not recommended).
     """
     app = FastAPI(title="agentscroll", version=__version__)
     _store = store if store is not None else Store()
+    _install_host_guard(app, allowed_hosts)
 
     watchdog_on = idle_timeout > 0 and on_idle is not None
     if watchdog_on:
@@ -219,6 +232,39 @@ def create_app(store: Store | None = None, *, on_idle=None, idle_timeout: float 
         app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
 
     return app
+
+
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", ""}
+
+
+def _install_host_guard(app: "FastAPI", allowed_hosts: list[str] | None) -> None:
+    """Reject requests whose Host header isn't an allowed hostname.
+
+    Defends against DNS-rebinding: a malicious page can't point its own
+    hostname at 127.0.0.1 and read local data, because the Host header would
+    be that hostname, not a loopback name. The port portion is ignored (it
+    can auto-change); only the hostname is checked.
+    """
+    if allowed_hosts is not None and not allowed_hosts:
+        return  # explicitly disabled
+    allow = set(_LOOPBACK_HOSTS)
+    if allowed_hosts:
+        allow.update(h.lower() for h in allowed_hosts)
+
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import PlainTextResponse
+
+    class _HostGuard(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            host = request.headers.get("host", "")
+            # Strip the port; handle IPv6 [::1]:port form.
+            hostname = host.rsplit(":", 1)[0] if ":" in host and not host.endswith("]") else host
+            hostname = hostname.strip("[]").lower()
+            if hostname not in allow:
+                return PlainTextResponse("Forbidden: unexpected Host header", status_code=403)
+            return await call_next(request)
+
+    app.add_middleware(_HostGuard)
 
 
 def _install_heartbeat_watchdog(app: "FastAPI", on_idle, idle_timeout: float) -> None:

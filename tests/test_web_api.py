@@ -66,8 +66,10 @@ class FakeSource(Source):
 
 @pytest.fixture
 def client():
+    # allowed_hosts=[] disables the Host guard for the TestClient (whose
+    # default Host header is "testserver"); the guard has its own tests.
     store = Store([FakeSource()])
-    return TestClient(create_app(store))
+    return TestClient(create_app(store, allowed_hosts=[]))
 
 
 def test_health(client):
@@ -153,7 +155,25 @@ def test_heartbeat_endpoints_enabled_with_watchdog():
     # heartbeat endpoint accepts pings. (The timing-based auto-shutdown has a
     # >=10s grace period by design; its end-to-end behaviour is covered by a
     # CLI smoke test rather than a slow unit test.)
-    app = create_app(Store([FakeSource()]), on_idle=lambda: None, idle_timeout=10.0)
+    app = create_app(Store([FakeSource()]), on_idle=lambda: None, idle_timeout=10.0,
+                     allowed_hosts=[])
     c = TestClient(app)
     assert c.get("/api/heartbeat-config").json()["enabled"] == 1.0
     assert c.post("/api/heartbeat").json()["status"] == "ok"
+
+
+def test_host_guard_rejects_foreign_host():
+    # Default (loopback-only) guard: a foreign Host header (DNS-rebinding) 403s,
+    # while loopback hosts pass.
+    app = create_app(Store([FakeSource()]))  # default loopback allowlist
+    c = TestClient(app)
+    assert c.get("/api/health", headers={"host": "127.0.0.1:8765"}).status_code == 200
+    assert c.get("/api/health", headers={"host": "localhost"}).status_code == 200
+    assert c.get("/api/health", headers={"host": "evil.example.com"}).status_code == 403
+
+
+def test_host_guard_allows_configured_host():
+    app = create_app(Store([FakeSource()]), allowed_hosts=["myhost.local"])
+    c = TestClient(app)
+    assert c.get("/api/health", headers={"host": "myhost.local:9000"}).status_code == 200
+    assert c.get("/api/health", headers={"host": "other.com"}).status_code == 403
