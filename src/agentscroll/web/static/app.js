@@ -120,14 +120,20 @@ function toast(msg) {
   toast._t = setTimeout(() => (t.hidden = true), 2200);
 }
 
-const srcColor = (name) =>
-  name === "opencode" ? "var(--opencode)"
-  : name === "claudecode" ? "var(--claudecode)"
-  : "var(--focus)";
-const srcSoft = (name) =>
-  name === "opencode" ? "var(--opencode-soft)"
-  : name === "claudecode" ? "var(--claudecode-soft)"
-  : "var(--focus-soft)";
+const _SRC_COLORS = {
+  opencode: "var(--opencode)",
+  claudecode: "var(--claudecode)",
+  codex: "var(--codex)",
+  aider: "var(--aider)",
+};
+const _SRC_SOFTS = {
+  opencode: "var(--opencode-soft)",
+  claudecode: "var(--claudecode-soft)",
+  codex: "var(--codex-soft)",
+  aider: "var(--aider-soft)",
+};
+const srcColor = (name) => _SRC_COLORS[name] || "var(--focus)";
+const srcSoft = (name) => _SRC_SOFTS[name] || "var(--focus-soft)";
 
 // ====================================================================
 // state
@@ -182,11 +188,26 @@ function toggleTheme() {
 
 async function loadSources() {
   state.sources = await getJSON("/api/sources");
-  state.sources.forEach((s) => state.enabled.add(s.name));
+  // Only sources with data are enabled/filterable; unavailable ones render
+  // greyed-out so users can see what agentscroll could read.
+  state.sources.forEach((s) => { if (s.available) state.enabled.add(s.name); });
   const wrap = $("#srcfilter");
   wrap.replaceChildren(
-    ...state.sources.map((s) =>
-      el("button", {
+    ...state.sources.map((s) => {
+      if (!s.available) {
+        return el("button", {
+          class: "src-toggle src-unavailable",
+          disabled: "disabled",
+          "aria-pressed": "false",
+          dataset: { source: s.name },
+          title: `${s.label || s.name}: no sessions found on this machine`,
+          style: `--src:${srcColor(s.name)};--src-soft:${srcSoft(s.name)}`,
+        },
+          el("span", { class: "dot" }),
+          s.label || s.name
+        );
+      }
+      return el("button", {
         class: "src-toggle",
         "aria-pressed": "true",
         dataset: { source: s.name },
@@ -197,8 +218,8 @@ async function loadSources() {
         el("span", { class: "dot" }),
         el("span", { class: "check" }, "\u2713"),
         s.label || s.name
-      )
-    )
+      );
+    })
   );
 }
 

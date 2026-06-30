@@ -122,15 +122,31 @@ def create_app(
 
     @app.get("/api/sources")
     def api_sources() -> list[dict[str, Any]]:
-        return [
-            {
+        # Report every KNOWN adapter, marking which have data on this machine.
+        # The store holds the available ones; we additionally surface any
+        # registered-but-unavailable adapters so the UI can show them greyed.
+        from ..sources import registry
+
+        out: list[dict[str, Any]] = []
+        available_names = set()
+        for s in _store.sources:
+            available_names.add(s.name)
+            out.append({
                 "name": s.name,
                 "label": s.label,
                 "available": True,
                 "location": str(s.location()) if s.location() else None,
-            }
-            for s in _store.sources
-        ]
+            })
+        for s in registry.all_sources():
+            if s.name in available_names:
+                continue
+            out.append({
+                "name": s.name,
+                "label": s.label,
+                "available": False,
+                "location": None,
+            })
+        return out
 
     @app.get("/api/sessions")
     def api_sessions(

@@ -85,6 +85,18 @@ def test_sources(client):
     assert data[0]["available"] is True
 
 
+def test_sources_includes_unavailable_known_adapters(client):
+    # The store has only the 'fake' source, but /api/sources should also
+    # surface the registered adapters as unavailable, so the UI can show them.
+    data = client.get("/api/sources").json()
+    by_name = {s["name"]: s for s in data}
+    assert by_name["fake"]["available"] is True
+    # Registered adapters not in the store appear, marked unavailable.
+    for name in ("opencode", "claudecode", "codex", "aider"):
+        assert name in by_name
+        assert by_name[name]["available"] is False
+
+
 def test_sessions_list_and_title_filter(client):
     data = client.get("/api/sessions").json()
     assert set(data) >= {"sessions", "offset", "limit", "has_more"}

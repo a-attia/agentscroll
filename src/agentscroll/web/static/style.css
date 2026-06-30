@@ -8,6 +8,8 @@
 :root {
   --opencode:   #b8791f;
   --claudecode: #b5512f;
+  --codex:      #3a8f5b;
+  --aider:      #7a6ad1;
   --focus:      #1f8a9c;
 
   --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
@@ -29,6 +31,8 @@
   --mark-bg:  #3a4d2a;
   --opencode-soft:   rgba(224,164,88,.14);
   --claudecode-soft: rgba(194,103,74,.14);
+  --codex-soft:      rgba(58,143,91,.16);
+  --aider-soft:      rgba(122,106,209,.16);
   --focus-soft:      rgba(95,179,196,.16);
 }
 
@@ -44,9 +48,13 @@
   --mark-bg:  #fde68a;
   --opencode:   #9a6510;
   --claudecode: #a8421f;
+  --codex:      #2f7a4a;
+  --aider:      #5b4cb8;
   --focus:      #0f6f7e;
   --opencode-soft:   rgba(154,101,16,.12);
   --claudecode-soft: rgba(168,66,31,.12);
+  --codex-soft:      rgba(47,122,74,.12);
+  --aider-soft:      rgba(91,76,184,.12);
   --focus-soft:      rgba(15,111,126,.12);
 }
 
@@ -211,6 +219,17 @@ button { font-family: inherit; }
   border-style: dashed;
 }
 .src-toggle[aria-pressed="false"] .dot { background: var(--fg-faint); }
+
+/* a known source with no data on this machine: shown but disabled */
+.src-toggle.src-unavailable {
+  opacity: .4;
+  border-style: dotted;
+  cursor: not-allowed;
+  color: var(--fg-faint);
+  background: transparent;
+}
+.src-toggle.src-unavailable .dot { background: var(--fg-faint); }
+.src-toggle.src-unavailable:hover { color: var(--fg-faint); }
 
 .date-filters { display: flex; align-items: center; gap: .35rem; margin-left: auto; }
 .date-filters input {
