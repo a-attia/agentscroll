@@ -508,6 +508,12 @@ function renderHeader(meta) {
     actionBar(meta)
   );
   const body = el("div", { class: "t-body", id: "t-body" });
+  // Load more messages as the (frozen-header) message body scrolls near bottom.
+  body.addEventListener("scroll", () => {
+    if (state.current && state.msg.hasMore && !state.msg.loading) {
+      if (body.scrollTop + body.clientHeight >= body.scrollHeight - 400) loadMessages(false);
+    }
+  });
   t.replaceChildren(head, body);
 }
 
@@ -641,13 +647,8 @@ function messageNode(m) {
     ...parts);
 }
 
-// auto-load more messages as the reader scrolls near the bottom
-$("#reader").addEventListener("scroll", () => {
-  const r = $("#reader");
-  if (state.current && state.msg.hasMore && !state.msg.loading) {
-    if (r.scrollTop + r.clientHeight >= r.scrollHeight - 400) loadMessages(false);
-  }
-});
+// (message-body scroll handler is attached per-render in renderHeader, since
+//  the .t-body element is recreated for each opened session)
 
 // ====================================================================
 // in-transcript find
