@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from agentscroll.sources.aider import AiderSource
+from agentscroll.sources.aider import AiderSource, _is_unsafe_root, _search_roots
 
 _HISTORY = """# aider chat started at 2025-01-31 12:34:56
 
@@ -35,6 +35,31 @@ def _project(tmp_path: Path) -> Path:
 
 def test_aider_not_available_when_empty(tmp_path):
     assert AiderSource(roots=[tmp_path]).is_available() is False
+
+
+def test_aider_does_not_scan_without_optin(monkeypatch):
+    # No AGENTSCROLL_AIDER_DIRS => no roots => Aider is unavailable and never
+    # walks the filesystem (prevents macOS permission prompts on app launch).
+    monkeypatch.delenv("AGENTSCROLL_AIDER_DIRS", raising=False)
+    assert _search_roots() == []
+    assert AiderSource().is_available() is False
+
+
+def test_aider_refuses_unsafe_roots():
+    home = Path.home()
+    assert _is_unsafe_root(Path("/")) is True
+    assert _is_unsafe_root(home) is True
+    assert _is_unsafe_root(home / "Pictures") is True
+    assert _is_unsafe_root(home / "Library") is True
+    assert _is_unsafe_root(home / "Documents") is True
+
+
+def test_aider_optin_via_env(tmp_path, monkeypatch):
+    proj = _project(tmp_path)
+    monkeypatch.setenv("AGENTSCROLL_AIDER_DIRS", str(proj.parent))
+    src = AiderSource()  # picks up the env var
+    assert src.is_available() is True
+    assert len(list(src.list_sessions())) == 2
 
 
 def test_aider_splits_runs_into_sessions(tmp_path):

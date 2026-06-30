@@ -43,12 +43,49 @@ _STARTED_RE = re.compile(r"^#+\s*aider chat started at\s+(?P<ts>.+?)\s*$", re.IG
 _USER_RE = re.compile(r"^####\s+(?P<text>.*)$")
 _MAX_DEPTH = 6
 
+# Directory names skipped during the walk: heavy build dirs plus macOS
+# TCC-protected user folders (scanning these triggers system permission
+# prompts and is never where project code lives).
+_SKIP_DIRS = {
+    ".git", "node_modules", ".venv", "venv", "__pycache__", ".tox", ".mypy_cache",
+    "Library", "Pictures", "Photos Library.photoslibrary", "Music", "Movies",
+    "Desktop", "Documents", "Downloads", "Applications", ".Trash",
+}
+
 
 def _search_roots() -> list[Path]:
+    """Roots to scan for Aider history.
+
+    Aider stores `.aider.chat.history.md` per project, scattered across the
+    filesystem -- there is no single well-known location. Rather than walk
+    broad/protected directories (which triggers macOS permission prompts and
+    is slow), agentscroll only scans Aider when the user explicitly opts in
+    via AGENTSCROLL_AIDER_DIRS (colon-separated project/parent dirs). With no
+    env var set, the Aider source is simply unavailable.
+    """
     env = os.environ.get("AGENTSCROLL_AIDER_DIRS")
-    if env:
-        return [Path(p).expanduser() for p in env.split(os.pathsep) if p]
-    return [Path.cwd()]
+    if not env:
+        return []
+    return [Path(p).expanduser() for p in env.split(os.pathsep) if p]
+
+
+def _is_unsafe_root(root: Path) -> bool:
+    """Refuse to walk the filesystem root, the home dir itself, or any
+    TCC-protected/system location -- even if explicitly configured."""
+    try:
+        resolved = root.resolve()
+    except OSError:
+        return True
+    # Never walk '/' or a top-level mount, or the home directory directly.
+    if len(resolved.parts) <= 1:
+        return True
+    if resolved == Path.home().resolve():
+        return True
+    # Never walk a protected top-level user folder (e.g. ~/Pictures).
+    home = Path.home().resolve()
+    if resolved.parent == home and resolved.name in _SKIP_DIRS:
+        return True
+    return False
 
 
 def _find_history_files(roots: list[Path]) -> list[Path]:
@@ -59,16 +96,16 @@ def _find_history_files(roots: list[Path]) -> list[Path]:
             if root.name == _HISTORY_NAME and root.is_file():
                 found.append(root)
             continue
-        # Depth-limited walk to avoid scanning an entire home directory.
+        if _is_unsafe_root(root):
+            continue  # never walk roots / home / protected folders
+        # Depth-limited walk; skip heavy + protected subdirectories.
         base_depth = len(root.parts)
         for dirpath, dirnames, filenames in os.walk(root):
             depth = len(Path(dirpath).parts) - base_depth
             if depth > _MAX_DEPTH:
                 dirnames[:] = []
                 continue
-            # Skip common heavy/irrelevant dirs.
-            dirnames[:] = [d for d in dirnames
-                           if d not in {".git", "node_modules", ".venv", "venv", "__pycache__"}]
+            dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
             if _HISTORY_NAME in filenames:
                 found.append(Path(dirpath) / _HISTORY_NAME)
     return sorted(set(found))

@@ -225,7 +225,7 @@ built without FTS5, `index` says so and search keeps working without it.
 | `opencode`   | SQLite (`session` / `message` / `part`), read-only         | `~/.local/share/opencode/opencode.db`  |
 | `claudecode` | per-project JSONL transcripts + nested subagent sidechains  | `~/.claude/projects/`                   |
 | `codex`      | per-session `rollout-*.jsonl` rollouts                      | `~/.codex/sessions/`                    |
-| `aider`      | per-project `.aider.chat.history.md` Markdown logs          | searched from the working directory     |
+| `aider`      | per-project `.aider.chat.history.md` Markdown logs          | set `AGENTSCROLL_AIDER_DIRS` to opt in  |
 
 More agents (Gemini CLI, Zed, VS Code Copilot Chat, GitHub Copilot CLI) are
 researched and queued — see [`ROADMAP.md`](ROADMAP.md).
@@ -246,6 +246,8 @@ point it elsewhere, and you can control how the web server binds:
 |:--------------------------|:------------------------------------------------------------|
 | `AGENTSCROLL_OPENCODE_DB` | path to `opencode.db`                                       |
 | `AGENTSCROLL_CLAUDE_DIR`  | path to `~/.claude` or `~/.claude/projects`                |
+| `AGENTSCROLL_CODEX_DIR`   | path to `~/.codex` or `~/.codex/sessions`                  |
+| `AGENTSCROLL_AIDER_DIRS`  | colon-separated dirs to scan for Aider history (opt-in)     |
 | `AGENTSCROLL_PORT`        | web server port (default `8765`; or use `--port`)           |
 | `AGENTSCROLL_HOST`        | web server bind host (default `127.0.0.1`; or use `--host`) |
 | `AGENTSCROLL_INDEX`       | path to the search index database                          |
