@@ -1,0 +1,54 @@
+# Contributing to agentscroll
+
+Thanks for your interest. agentscroll is a small, local-first, read-only
+tool, and contributions that keep it that way are very welcome.
+
+## Development setup
+
+```bash
+git clone https://github.com/a-attia/agentscroll
+cd agentscroll
+python -m pip install -e ".[web,dev]"   # editable install + web + dev tools
+```
+
+The bare package has **no runtime dependencies** (stdlib only); the web app
+and developer tooling come from extras. Requires Python 3.10+.
+
+## Running the checks
+
+```bash
+pytest -q          # the test suite
+ruff check src tests   # lint
+```
+
+Both must pass before a change is merged. The test suite is fast (~2s) and
+runs against synthetic fixtures plus, where present, your real local data
+(those tests skip gracefully when no data is available).
+
+## Project conventions
+
+- **Read-only, always.** Nothing in agentscroll may write to, lock for
+  writing, or upload a user's agent data. The opencode SQLite DB is opened
+  with `mode=ro`; JSONL files are read-only. Tests assert this invariant.
+- **Lightest tool that does the job.** Prefer the stdlib. New runtime
+  dependencies for the core CLI are a hard sell; put optional features
+  behind extras (see `[project.optional-dependencies]`).
+- **Platform-agnostic.** Keep OS-specific code guarded by `sys.platform`
+  and best-effort (it must degrade, not crash, elsewhere). Window/icon
+  handling lives in Python, not baked into per-OS launcher scripts.
+- **Tests for fixes.** Bug fixes should come with a regression test;
+  numeric/parsing assertions should be backed by a known-correct value.
+
+## Adding a new agent source
+
+Implement the `Source` interface in `src/agentscroll/sources/base.py` and
+register it in `src/agentscroll/sources/registry.py`. Everything else (CLI,
+search, export, web, index) works against the common model automatically.
+See `opencode.py` (SQLite) and `claudecode.py` (JSONL) as references.
+
+## Submitting changes
+
+1. Fork and branch.
+2. Make the change with a focused scope and a test.
+3. Run `pytest -q` and `ruff check src tests`.
+4. Open a pull request describing the change and how you verified it.
