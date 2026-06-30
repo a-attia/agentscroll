@@ -28,6 +28,24 @@ const fmtDate = (iso) => {
   });
 };
 
+// Compact relative time for list rows: "3m", "2h", "5d", "3w", "4mo", "2y".
+const fmtRelative = (iso) => {
+  if (!iso) return "?";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "?";
+  const s = Math.max(0, (Date.now() - then) / 1000);
+  if (s < 60) return "just now";
+  const m = s / 60;
+  if (m < 60) return `${Math.floor(m)}m ago`;
+  const h = m / 60;
+  if (h < 24) return `${Math.floor(h)}h ago`;
+  const d = h / 24;
+  if (d < 7) return `${Math.floor(d)}d ago`;
+  if (d < 30) return `${Math.floor(d / 7)}w ago`;
+  if (d < 365) return `${Math.floor(d / 30)}mo ago`;
+  return `${Math.floor(d / 365)}y ago`;
+};
+
 const fmtTokens = (n) => {
   if (n == null) return "";
   if (n < 1000) return String(n);
@@ -290,7 +308,23 @@ async function loadSessions(reset) {
   }
   $("#count").dataset.n = String((parseInt($("#count").dataset.n || "0", 10)) + rows.length);
   rows.forEach((s) => sessionsEl.append(sessionRow(s)));
-  if (!sessionsEl.children.length) sessionsEl.append(el("li", { class: "loading" }, "no sessions"));
+  if (!sessionsEl.children.length) sessionsEl.append(emptyListNode());
+}
+
+function emptyListNode() {
+  // No sources at all -> onboarding help; sources present -> just no matches.
+  if (!state.sources.length) {
+    return el("li", { class: "empty-list" },
+      el("div", { class: "empty-list-title" }, "No AI-agent sessions found"),
+      el("div", { class: "empty-list-body" },
+        "agentscroll reads, by default:"),
+      el("ul", { class: "empty-list-paths" },
+        el("li", {}, el("code", {}, "~/.local/share/opencode/opencode.db")),
+        el("li", {}, el("code", {}, "~/.claude/projects/"))),
+      el("div", { class: "empty-list-body" },
+        "Run ", el("code", {}, "agentscroll doctor"), " to see what was detected."));
+  }
+  return el("li", { class: "loading" }, "no sessions");
 }
 
 async function loadSearch(reset) {
@@ -401,7 +435,7 @@ function childRow(c) {
 function metaLine(s) {
   return el("div", { class: "s-meta" },
     el("span", { class: "s-src" }, s.source),
-    el("span", {}, fmtDate(s.updated)),
+    el("span", { title: fmtDate(s.updated) }, fmtRelative(s.updated)),
     s.message_count != null ? el("span", {}, `${s.message_count} msgs`) : null,
     s.tokens_input != null ? el("span", { class: "s-badge", title: "tokens in/out" },
       `${fmtTokens(s.tokens_input)}/${fmtTokens(s.tokens_output)}`) : null,

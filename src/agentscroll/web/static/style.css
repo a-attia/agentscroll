@@ -328,6 +328,19 @@ button { font-family: inherit; }
 .empty-mark { font-family: var(--mono); font-size: 2.5rem; color: var(--line); letter-spacing: -2px; }
 .empty-sub { color: var(--fg-faint); font-size: 12px; }
 
+/* onboarding empty-list (no sources detected) */
+.empty-list { padding: 1.5rem 1rem; color: var(--fg-dim); cursor: default; }
+.empty-list:hover { background: none; }
+.empty-list::before { content: none; }
+.empty-list-title { font-weight: 600; color: var(--fg); margin-bottom: .5rem; }
+.empty-list-body { font-size: 13px; margin: .5rem 0; }
+.empty-list-paths { margin: .4rem 0; padding-left: 1.2rem; }
+.empty-list-paths li { margin: .25rem 0; }
+.empty-list code {
+  font-family: var(--mono); font-size: 11.5px;
+  background: var(--panel-2); border-radius: 4px; padding: .1em .35em;
+}
+
 .transcript {
   flex: 1; min-height: 0;            /* fill the reader; allow body to shrink/scroll */
   display: flex; flex-direction: column;
