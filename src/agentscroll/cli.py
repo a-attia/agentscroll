@@ -570,16 +570,17 @@ def _pywebview_available() -> bool:
 
 
 def _app_icon_path() -> str | None:
-    """Extract the bundled PNG icon to a temp file and return its path.
+    """Extract the bundled PNG window icon to a temp file and return its path.
 
-    pywebview's `icon` wants a filesystem path; our icon ships as package
-    data, so materialize it once per run.
+    Used cross-platform: pywebview's `icon` wants a filesystem path (Windows
+    taskbar, GTK/Qt window icon, macOS Dock). Our icon ships as package data,
+    so we materialize it once per run.
     """
     import tempfile
     from importlib import resources
 
     try:
-        data = resources.files("agentscroll.web.static").joinpath("apple-touch-icon.png").read_bytes()
+        data = resources.files("agentscroll.assets").joinpath("icon-256.png").read_bytes()
     except (OSError, ModuleNotFoundError, FileNotFoundError):
         return None
     path = os.path.join(tempfile.gettempdir(), "agentscroll-icon.png")
@@ -591,54 +592,21 @@ def _app_icon_path() -> str | None:
     return path
 
 
-def _app_menu(window) -> list:
-    """A small native menu with a meaningful 'About agentscroll' item.
-
-    Gives a real About entry (version + homepage) even when running
-    unbundled, instead of relying on a generic Python About box.
-    """
-    try:
-        from webview.menu import Menu, MenuAction, MenuSeparator
-    except Exception:
-        return []
-
-    from . import __version__
-
-    def about() -> None:
-        try:
-            window.create_confirmation_dialog(
-                "About agentscroll",
-                f"agentscroll {__version__}\n\n"
-                "Navigate, search, copy, and export your AI coding-agent "
-                "sessions. Local-first and read-only.",
-            )
-        except Exception:
-            pass
-
-    def homepage() -> None:
-        from . import webopen
-
-        webopen.open_window("https://github.com/attia/agentscroll")
-
-    return [
-        Menu("agentscroll", [
-            MenuAction("About agentscroll", about),
-            MenuSeparator(),
-            MenuAction("Project homepage", homepage),
-        ]),
-    ]
-
-
 def _brand_macos_app() -> None:
-    """Make the macOS menu bar say 'agentscroll' (not 'Python').
+    """Brand the macOS app: menu name 'agentscroll', a rich standard About
+    panel (version + description), and the Dock icon.
 
-    The app-menu title comes from the running process's CFBundleName. When we
-    run unbundled (or after the .app runner exec's python), that's 'Python'.
-    We patch the main bundle's info dict and set the Dock icon via PyObjC,
-    which pywebview already depends on for the Cocoa backend.
+    The menu-bar name and the standard About panel both read from the running
+    process's bundle info dict. When we run unbundled (or after the .app
+    runner exec's python), that's 'Python' with an empty About. We patch the
+    main bundle's info dict via PyObjC (already a pywebview dep on macOS) so
+    pywebview's *default* app menu -- the one it always creates -- gets the
+    right name and a useful About, instead of adding a second custom menu.
     """
     if sys.platform != "darwin":
         return
+    from . import __version__
+
     try:
         from Foundation import NSBundle  # type: ignore
 
@@ -647,6 +615,13 @@ def _brand_macos_app() -> None:
         if info is not None:
             info["CFBundleName"] = "agentscroll"
             info["CFBundleDisplayName"] = "agentscroll"
+            # Fields the standard About panel reads:
+            info["CFBundleShortVersionString"] = __version__
+            info["CFBundleVersion"] = __version__
+            info["NSHumanReadableCopyright"] = (
+                "Navigate, search, copy, and export your AI coding-agent "
+                "sessions. Local-first and read-only."
+            )
     except Exception:
         pass  # best-effort cosmetic; never fail the launch
     # Dock icon (independent of the menu name).
@@ -760,19 +735,18 @@ def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     t.start()
     _background_index_refresh()
     _eprint(f"agentscroll app -> {url}  (read-only; close the window to quit)")
-    # Set the macOS menu-bar app name + Dock icon to 'agentscroll' (otherwise
-    # an unbundled python process shows up as "Python").
+    # macOS only: fix the menu-bar app name (an unbundled python process shows
+    # up as "Python"). No-op on other platforms, where the window title + icon
+    # below are what the OS uses.
     _brand_macos_app()
     bridge = _AppBridge(url)
+    # Window title is used by all backends (Windows/Linux taskbar + title bar).
     window = webview.create_window("agentscroll", url, width=1280, height=860, js_api=bridge)
     bridge.window = window
-    menu = _app_menu(window)
-    icon = _app_icon_path()
+    icon = _app_icon_path()           # cross-platform window/taskbar/Dock icon
     start_kwargs: dict[str, object] = {}
     if icon:
         start_kwargs["icon"] = icon
-    if menu:
-        start_kwargs["menu"] = menu
     webview.start(**start_kwargs)  # blocks until the window is closed
     # Window closed: stop the server and wait for the port to be released so
     # an immediate relaunch can reuse it.

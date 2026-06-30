@@ -57,9 +57,9 @@ agentscroll-web = "agentscroll.cli:main_web"
 agentscroll-app = "agentscroll.cli:main_app"
 
 [project.urls]
-Homepage = "https://github.com/attia/agentscroll"
-Repository = "https://github.com/attia/agentscroll"
-Issues = "https://github.com/attia/agentscroll/issues"
+Homepage = "https://github.com/a-attia/agentscroll"
+Repository = "https://github.com/a-attia/agentscroll"
+Issues = "https://github.com/a-attia/agentscroll/issues"
 
 [tool.hatch.version]
 path = "src/agentscroll/__init__.py"
