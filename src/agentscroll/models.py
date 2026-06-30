@@ -130,12 +130,6 @@ class Session:
         """True if this session was spawned by another (has a parent)."""
         return bool(self.parent_id)
 
-    @property
-    def tokens_total(self) -> int | None:
-        if self.tokens_input is None and self.tokens_output is None:
-            return None
-        return (self.tokens_input or 0) + (self.tokens_output or 0)
-
 
 # Re-export the converter for adapters.
 __all__ = ["Part", "Message", "Session", "PartType", "Role", "_to_dt"]

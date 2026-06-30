@@ -220,7 +220,13 @@ class FtsIndex:
 
     def search(self, query: str, *, limit: int | None = None,
                sources: list[str] | None = None) -> Iterator[IndexHit]:
-        """Yield IndexHits for an FTS query (newest indexing order)."""
+        """Yield IndexHits for an FTS query, most-recently-indexed first.
+
+        Ordering is by descending rowid: a session re-indexed after a change
+        is appended, so recently-updated sessions surface first -- a close
+        proxy for the lexical path's newest-session-first order (FTS5 does
+        not store the session's update time to sort on exactly).
+        """
         if not self.exists() or not query.strip():
             return iter(())
         return self._search(query, limit, sources)
@@ -237,6 +243,7 @@ class FtsIndex:
             placeholders = ",".join("?" * len(sources))
             sql += f" AND source IN ({placeholders})"
             params.extend(sources)
+        sql += " ORDER BY rowid DESC"
         if limit is not None:
             sql += " LIMIT ?"
             params.append(limit)

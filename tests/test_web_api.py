@@ -94,6 +94,12 @@ def test_sessions_list_and_title_filter(client):
     assert filtered[0]["title"] == "First session"
 
 
+def test_sessions_unknown_source_is_400(client):
+    # Mirror the CLI's unknown-source contract on the API.
+    assert client.get("/api/sessions?source=bogus").status_code == 400
+    assert client.get("/api/sessions?source=fake").status_code == 200
+
+
 def test_sessions_pagination_has_more(client):
     page = client.get("/api/sessions?limit=1").json()
     assert len(page["sessions"]) == 1

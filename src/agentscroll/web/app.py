@@ -143,6 +143,8 @@ def create_app(
         offset: int = Query(default=0, ge=0),
         limit: int = Query(default=60, ge=1, le=2000),
     ) -> dict[str, Any]:
+        if source and source not in {s.name for s in _store.sources}:
+            raise HTTPException(status_code=400, detail=f"unknown source: {source}")
         st = _store.with_sources([source]) if source else _store
         # Fetch one extra to tell the client whether more pages exist.
         rows = st.list_sessions(

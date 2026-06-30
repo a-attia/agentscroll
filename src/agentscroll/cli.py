@@ -132,7 +132,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         else:
             print(f"  {src.name:12} not found   (looked in default location)")
     if not any_avail:
-        print("  (none detected -- see 'agentscroll doctor' notes below)")
+        print("  (none detected -- set AGENTSCROLL_OPENCODE_DB / AGENTSCROLL_CLAUDE_DIR")
+        print("   if your data lives outside the default locations)")
     print()
 
     print("optional features:")
@@ -463,7 +464,6 @@ def cmd_web(args: argparse.Namespace) -> int:
             "    pip install fastapi uvicorn"
         )
         return 1
-    from . import serverconfig
     from .web.app import create_app
 
     # Resolve the actual port to bind: honour the requested one, but fall back
