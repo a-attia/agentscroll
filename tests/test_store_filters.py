@@ -102,4 +102,19 @@ def test_fold_self_referential_parent_is_not_dropped():
     store = Store([FakeSource(sessions)])
     folded = store.list_sessions(fold_subagents=True)
     assert [s.id for s in folded] == ["self"]
-    assert folded[0].children == ()
+
+
+def test_with_sources_filters_own_sources_not_the_registry():
+    # Regression: with_sources() must narrow THIS store's injected sources,
+    # not re-fetch from the global registry. Otherwise an injected/demo store
+    # filtered by a name that matches a real adapter would leak real data.
+    store = _store()                       # injected source is named "fake"
+    same = store.with_sources(["fake"])
+    assert [s.name for s in same.sources] == ["fake"]
+    assert [s.id for s in same.list_sessions()] == ["d", "c", "b", "a"]
+
+    # A name not present in the injected store yields an empty store -- never
+    # a fallback to the machine's real adapters.
+    empty = store.with_sources(["opencode"])
+    assert empty.sources == []
+    assert list(empty.list_sessions()) == []

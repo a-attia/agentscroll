@@ -63,6 +63,10 @@ dev = [
     "uvicorn>=0.29",
     "httpx>=0.27",
 ]
+# Tooling to regenerate the README screenshots (maintainers only). Needs a
+# one-time `playwright install chromium` for the headless browser; neither
+# this extra nor the browser binary is required to run scrollback.
+screenshots = ["playwright>=1.40", "rich>=13.0", "scrollback[web]"]
 
 [project.scripts]
 scrollback = "scrollback.cli:main"

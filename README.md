@@ -11,6 +11,16 @@ or a local web app.
 Everything is local-first and strictly **read-only**: scrollback never
 modifies, locks for writing, or uploads your data.
 
+![The scrollback web app: a session list beside a transcript with rendered
+Markdown, syntax-highlighted code, and typeset LaTeX math.](assets/screenshots/web.png)
+
+<p align="center"><em>The local web app — transcript reading with typeset
+math, syntax highlighting, and per-session export. (Synthetic demo data.)</em></p>
+
+It is equally at home on the command line:
+
+![scrollback list output in the terminal.](assets/screenshots/cli.svg)
+
 > **For AI agents:** read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
 > project conventions. This README is for human readers.
 

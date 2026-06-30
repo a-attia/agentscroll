@@ -46,6 +46,22 @@ register it in `src/scrollback/sources/registry.py`. Everything else (CLI,
 search, export, web, index) works against the common model automatically.
 See `opencode.py` (SQLite) and `claudecode.py` (JSONL) as references.
 
+## Regenerating the README screenshots
+
+The images in the README are generated from synthetic, sanitized demo data
+(`scripts/demo_data.py`) — never from real sessions — so they are safe to
+publish. To regenerate them after a UI change:
+
+```bash
+pip install -e ".[screenshots]"
+playwright install chromium       # one-time headless-browser download
+python scripts/screenshots.py     # writes assets/screenshots/{cli.svg,web.png}
+```
+
+The CLI image is rendered with `rich` (no browser); the web image is
+captured with headless Chromium via Playwright. Neither the `screenshots`
+extra nor the browser is needed to run scrollback.
+
 ## Submitting changes
 
 1. Fork and branch.

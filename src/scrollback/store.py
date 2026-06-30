@@ -56,7 +56,14 @@ class Store:
         return self._sources
 
     def with_sources(self, names: list[str]) -> "Store":
-        chosen = [s for s in registry.all_sources() if s.name in names]
+        """Return a Store narrowed to the named sources.
+
+        Filters THIS store's own sources rather than re-fetching from the
+        global registry, so an injected store (tests, demos) stays isolated
+        instead of silently picking up the machine's real adapters.
+        """
+        wanted = set(names)
+        chosen = [s for s in self._sources if s.name in wanted]
         return Store(chosen)
 
     # -- aggregate stats ----------------------------------------------------
