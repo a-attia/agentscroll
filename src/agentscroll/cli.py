@@ -313,6 +313,31 @@ def cmd_web(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_install_launcher(args: argparse.Namespace) -> int:
+    from . import launcher_install
+
+    dest = None
+    if args.dest:
+        import pathlib
+
+        dest = pathlib.Path(args.dest).expanduser()
+    try:
+        created = launcher_install.install(dest, app_bundle=args.app_bundle)
+    except OSError as exc:
+        _eprint(f"could not install launcher: {exc}")
+        return 1
+    if not created:
+        _eprint("nothing was installed")
+        return 1
+    _eprint("installed launcher(s):")
+    for p in created:
+        _eprint(f"  {p}")
+    if sys.platform == "darwin" and not args.app_bundle:
+        _eprint("tip: double-click it (first time: right-click -> Open).")
+        _eprint("     for an app icon in ~/Applications, re-run with --app-bundle")
+    return 0
+
+
 def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     try:
         import webview  # pywebview
@@ -436,6 +461,16 @@ def build_parser() -> argparse.ArgumentParser:
                     help="open in a native desktop window (needs the 'app' extra)")
     sp.set_defaults(func=cmd_web)
 
+    # install-launcher
+    sp = sub.add_parser(
+        "install-launcher",
+        help="install a double-clickable launcher for the web app",
+    )
+    sp.add_argument("--dest", help="where to place the launcher (default: Desktop)")
+    sp.add_argument("--app-bundle", action="store_true",
+                    help="macOS: also build an agentscroll.app in ~/Applications")
+    sp.set_defaults(func=cmd_install_launcher)
+
     return p
 
 
@@ -448,6 +483,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except KeyboardInterrupt:
         return 130
+
+
+def main_web(argv: list[str] | None = None) -> int:
+    """Console entry point: `agentscroll-web [options]` == `agentscroll web`."""
+    return main(["web", *(argv if argv is not None else sys.argv[1:])])
+
+
+def main_app(argv: list[str] | None = None) -> int:
+    """Console entry point: `agentscroll-app` == `agentscroll web --app`."""
+    return main(["web", "--app", *(argv if argv is not None else sys.argv[1:])])
 
 
 if __name__ == "__main__":

@@ -39,6 +39,10 @@ dev = ["pytest>=8.0", "ruff>=0.4", "rich>=13.0"]
 
 [project.scripts]
 agentscroll = "agentscroll.cli:main"
+# Convenience entry points installed on PATH by pip, so users don't have to
+# type the subcommand. `agentscroll-web` == `agentscroll web`, etc.
+agentscroll-web = "agentscroll.cli:main_web"
+agentscroll-app = "agentscroll.cli:main_app"
 
 [project.urls]
 Homepage = "https://github.com/attia/agentscroll"
@@ -47,9 +51,11 @@ Issues = "https://github.com/attia/agentscroll/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentscroll"]
-# Static web assets live inside the package and are non-Python; tell
-# hatchling to include them in the wheel artifact.
-artifacts = ["src/agentscroll/web/static/**"]
+# Non-Python package data (web assets + bundled launchers) shipped in the wheel.
+artifacts = [
+    "src/agentscroll/web/static/**",
+    "src/agentscroll/launchers/**",
+]
 
 [tool.ruff]
 line-length = 100

@@ -110,23 +110,29 @@ Install the web extra first: `pip install -e ".[web]"`.
 
 #### Launching without the terminal
 
-You don't have to type a command every time. Options (pick what suits
-your OS):
+You don't have to type the full command every time. After
+`pip install agentscroll` you have several options:
 
-- **Double-click launchers** in `launchers/`:
-  - macOS: `agentscroll.command` (first run: right-click -> Open)
-  - Windows: `agentscroll.bat`
-  - Linux: `agentscroll.sh`, or install `agentscroll.desktop` into your
-    application menu (`~/.local/share/applications/`).
+- **Short commands on PATH** (installed by pip):
+  - `agentscroll-web` -- same as `agentscroll web`
+  - `agentscroll-app` -- same as `agentscroll web --app`
+- **A double-clickable launcher**: run `agentscroll install-launcher`
+  once. It drops the OS-appropriate launcher on your Desktop:
+  - macOS: `agentscroll.command` (first run: right-click -> Open). Add
+    `--app-bundle` to also create `~/Applications/agentscroll.app` (an
+    actual app icon you can double-click or pin to the Dock).
+  - Windows: `agentscroll.bat`.
+  - Linux: installs `agentscroll.desktop` into your application menu and
+    drops `agentscroll.sh` on the Desktop.
+  Use `--dest <dir>` to place it somewhere else.
 - **Desktop app window**: `agentscroll web --app` opens a native window
-  (no browser tab) via `pywebview`. Install with
-  `pip install -e ".[app]"`.
-- **Global command**: install with `pipx install agentscroll` (or
-  `pip install`) so `agentscroll web` works from anywhere.
+  (no browser tab) via `pywebview` (`pip install "agentscroll[app]"`).
 
 All of these run the same local, read-only server; they differ only in
 how it's started and displayed. This keeps agentscroll platform-agnostic
-(no bundled native binary to maintain per OS).
+(no bundled native binary to maintain per OS). The launcher templates
+ship inside the package, so they work for `pip install` users -- not just
+source checkouts.
 
 #### How huge sessions stay fast
 
