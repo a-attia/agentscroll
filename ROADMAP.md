@@ -33,6 +33,46 @@ references. The same checklist applies to every new adapter:
 - synthetic-fixture tests, since contributor machines won't all have the
   agent's data.
 
+## Math / equation rendering
+
+Give users control over how mathematical notation in transcripts is
+displayed and exported. This matters for a scientific audience: a model
+often replies with LaTeX (`$\nabla \cdot u = 0$`), and a researcher may want
+that LaTeX preserved verbatim for pasting into a paper, while another reader
+just wants to see the rendered equation.
+
+The hard part is that math appears in three forms, only the first of which
+is unambiguous: delimited LaTeX (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`),
+Unicode math (`∇·u = 0`, `x²`), and plain ASCII (`x^2 + y^2`). The plan
+targets delimited LaTeX first, since it can be detected reliably.
+
+Planned scope, smallest-to-largest:
+
+1. **Protect LaTeX spans from the Markdown renderer (correctness; do first).**
+   Today the Markdown pass can mangle `\`, `_`, `*`, `^` inside `$...$`.
+   Detect and shield delimited-math regions before Markdown processing in
+   both the browser renderer and the dependency-free export renderer
+   (`minimd.py`), so equations survive intact even with no rendering.
+2. **A render-mode setting** with three values:
+   - `raw` — current behaviour (verbatim text).
+   - `latex` — show the LaTeX source verbatim, never mangled (best for
+     copy-into-a-paper).
+   - `rendered` — typeset the math.
+   Surface it as a toggle in the web transcript header (alongside
+   reasoning/tools) and persist it like the theme.
+3. **Typesetting** via a vendored, local math library (KaTeX preferred —
+   smaller and faster than MathJax; no CDN, consistent with the existing
+   `marked` / `highlight.js` / DOMPurify vendoring). The self-contained HTML
+   export embeds the same renderer so printed/saved files typeset offline.
+4. **An export flag** `--math {raw,latex,rendered}` on `agentscroll export`
+   (and the web export/print actions), so a scientist can guarantee LaTeX is
+   preserved when exporting for a manuscript.
+
+Open questions to resolve when building: whether to attempt Unicode/ASCII →
+LaTeX normalization (likely out of scope — too lossy), and how aggressively
+to auto-detect undelimited math (probably not at all, to avoid false
+positives in code/prose).
+
 ## Other ideas
 
 - **`tail` / `watch`**: live-follow the most recently active session as it
