@@ -206,15 +206,21 @@ class OpenCodeSource(Source):
             if not mrows:
                 return []
             ids = [mr["id"] for mr in mrows]
-            placeholders = ",".join("?" * len(ids))
-            prows = conn.execute(
-                f"""
-                SELECT id, message_id, time_created, data FROM part
-                WHERE message_id IN ({placeholders})
-                ORDER BY time_created, id
-                """,
-                ids,
-            ).fetchall()
+            # Fetch parts in chunks: a single IN (...) can exceed SQLite's
+            # SQLITE_MAX_VARIABLE_NUMBER (999 on older builds) for big sessions.
+            prows = []
+            for chunk in _chunks(ids, 900):
+                placeholders = ",".join("?" * len(chunk))
+                prows.extend(
+                    conn.execute(
+                        f"""
+                        SELECT id, message_id, time_created, data FROM part
+                        WHERE message_id IN ({placeholders})
+                        ORDER BY time_created, id
+                        """,
+                        chunk,
+                    ).fetchall()
+                )
 
         parts_by_message: dict[str, list[Part]] = {}
         for pr in prows:
@@ -239,6 +245,12 @@ class OpenCodeSource(Source):
 
 
 # -- helpers ---------------------------------------------------------------
+
+
+def _chunks(seq: list, size: int):
+    """Yield successive `size`-length chunks of `seq`."""
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
 
 
 def _col(row: sqlite3.Row, key: str) -> Any:

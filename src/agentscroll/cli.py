@@ -15,6 +15,7 @@ All output is plain and pipe-friendly. Reads are strictly read-only.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -102,10 +103,20 @@ def cmd_sources(args: argparse.Namespace) -> int:
     return 0 if any_found else 1
 
 
+class _BadSource(Exception):
+    """Raised when an unknown --source name is given."""
+
+
 def _make_store(args: argparse.Namespace) -> Store:
     store = Store()
-    if getattr(args, "source", None):
-        store = store.with_sources([args.source])
+    name = getattr(args, "source", None)
+    if name:
+        known = {s.name for s in registry.all_sources()}
+        if name not in known:
+            raise _BadSource(
+                f"unknown source {name!r}; available: {', '.join(sorted(known))}"
+            )
+        store = store.with_sources([name])
     return store
 
 
@@ -268,8 +279,12 @@ def cmd_export(args: argparse.Namespace) -> int:
     kwargs = _render_kwargs(args.format, args)
     rendered = export.render(sess, args.format, **kwargs)
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as fh:
-            fh.write(rendered)
+        try:
+            with open(args.output, "w", encoding="utf-8") as fh:
+                fh.write(rendered)
+        except OSError as exc:
+            _eprint(f"could not write {args.output}: {exc}")
+            return 1
         _eprint(f"wrote {args.output}")
     else:
         print(rendered)
@@ -573,11 +588,29 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Make stdout tolerant of non-UTF-8 locales (e.g. LANG=C) so transcripts
+    # full of emoji/CJK don't crash with UnicodeEncodeError when piped/redirected.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except (AttributeError, ValueError):
+        pass
+
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except _BadSource as exc:
+        _eprint(str(exc))
+        return 2
     except BrokenPipeError:
+        # Avoid a second BrokenPipeError + "Exception ignored" noise when Python
+        # flushes stdout at shutdown (the classic `| head` case): redirect the
+        # stdout fd to devnull before returning.
+        try:
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, sys.stdout.fileno())
+        except OSError:
+            pass
         return 0
     except KeyboardInterrupt:
         return 130
