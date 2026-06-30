@@ -240,6 +240,13 @@ window closes. All of this behaviour is decided in Python, so the launcher
 scripts stay free of OS-specific assumptions and ship inside the package
 for `pip install` users.
 
+To clean up, `scrollback uninstall` removes the artifacts scrollback
+created — the launchers, the macOS `.app`, the optional search index, and the
+launcher log — after a confirmation (`--yes` to skip it, `--dry-run` to
+preview). It never touches your agent data, and it does not remove the Python
+package itself: it prints the right `pip`/`pipx uninstall` command to finish
+the job (a program can't reliably uninstall the package it is running from).
+
 ## Fast search (optional index)
 
 By default, search is a lexical scan over your live data: zero setup,

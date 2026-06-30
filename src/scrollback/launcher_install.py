@@ -207,3 +207,43 @@ def _install_linux(dest: Path | None) -> list[Path]:
     _write(sh, _read_bundled("scrollback.sh"), executable=True)
     created.append(sh)
     return created
+
+
+# -- uninstall: locate + remove the artifacts install creates --------------
+
+def installed_artifacts() -> list[Path]:
+    """Return the launcher/app/log paths scrollback may have created.
+
+    Covers the default install locations on every platform (a custom
+    ``--dest`` is not tracked, so those must be removed by hand). Only paths
+    that currently exist are returned. Never includes the user's agent data.
+    """
+    home = Path.home()
+    candidates: list[Path] = []
+
+    if sys.platform == "darwin":
+        candidates += [
+            _desktop_dir() / "scrollback.command",
+            home / "Applications" / "scrollback.app",
+            home / "Library" / "Logs" / "scrollback-launcher.log",
+        ]
+    elif sys.platform == "win32":
+        candidates += [_desktop_dir() / "scrollback.bat"]
+    else:
+        apps = Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share")) / "applications"
+        candidates += [
+            apps / "scrollback.desktop",
+            _desktop_dir() / "scrollback.sh",
+        ]
+
+    return [p for p in candidates if p.exists()]
+
+
+def remove_path(path: Path) -> None:
+    """Delete a file or directory (used to remove a .app bundle)."""
+    import shutil
+
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()

@@ -99,3 +99,29 @@ def test_command_script_bakes_absolute_interpreter_path():
     script = launcher_install._command_script()
     assert sys.executable in script
     assert "scrollback.cli web" in script
+
+
+def test_installed_artifacts_finds_what_install_created(tmp_path, monkeypatch):
+    # Point HOME at a temp dir, install to the (temp) Desktop, then confirm
+    # installed_artifacts() reports the created launcher and that remove_path
+    # actually deletes it. Never touches the real home.
+    monkeypatch.setattr(launcher_install.Path, "home", classmethod(lambda cls: tmp_path))
+    desktop = tmp_path / "Desktop"
+    desktop.mkdir()
+
+    created = launcher_install.install(desktop, desktop=True)
+    assert created and all(p.exists() for p in created)
+
+    found = launcher_install.installed_artifacts()
+    # The platform's Desktop launcher should be discovered.
+    assert any(p in found for p in created), (found, created)
+
+    for p in found:
+        launcher_install.remove_path(p)
+        assert not p.exists()
+
+
+def test_installed_artifacts_empty_when_nothing_installed(tmp_path, monkeypatch):
+    monkeypatch.setattr(launcher_install.Path, "home", classmethod(lambda cls: tmp_path))
+    (tmp_path / "Desktop").mkdir()
+    assert launcher_install.installed_artifacts() == []

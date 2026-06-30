@@ -844,6 +844,72 @@ def cmd_install_launcher(args: argparse.Namespace) -> int:
     return 0
 
 
+def _detect_install_tool() -> str:
+    """Best-effort guess of how scrollback was installed, for the hint.
+
+    Returns the command the user should run to remove the package itself.
+    We never run it: a process cannot reliably uninstall the package it is
+    executing from, and the right tool (pip / pipx / conda) depends on how
+    it was installed.
+    """
+    exe = (sys.executable or "").replace("\\", "/")
+    if "/pipx/" in exe or "/.local/pipx/" in exe:
+        return "pipx uninstall scrollback"
+    return "pip uninstall scrollback"
+
+
+def cmd_uninstall(args: argparse.Namespace) -> int:
+    """Remove scrollback-created artifacts; explain how to remove the package.
+
+    Removes only files scrollback itself created (launchers, the macOS .app,
+    the optional search index, the launcher log). It never touches your agent
+    data, and it never tries to uninstall the Python package -- that is left
+    to pip/pipx, with the exact command printed at the end.
+    """
+    from . import fts, launcher_install
+
+    targets: list = list(launcher_install.installed_artifacts())
+    index_path = fts.default_index_path()
+    if index_path.exists():
+        targets.append(index_path)
+
+    if not targets:
+        _eprint("no scrollback-created artifacts found.")
+        _eprint(f"to remove the package itself, run:\n    {_detect_install_tool()}")
+        return 0
+
+    label = "would remove" if args.dry_run else "about to remove"
+    _eprint(f"{label}:")
+    for p in targets:
+        _eprint(f"  {p}")
+
+    if args.dry_run:
+        return 0
+
+    if not args.yes:
+        try:
+            reply = input("remove these? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            reply = ""
+        if reply not in ("y", "yes"):
+            _eprint("aborted; nothing removed.")
+            return 1
+
+    removed, failed = 0, 0
+    for p in targets:
+        try:
+            launcher_install.remove_path(p)
+            _eprint(f"removed {p}")
+            removed += 1
+        except OSError as exc:
+            _eprint(f"could not remove {p}: {exc}")
+            failed += 1
+
+    _eprint(f"\nremoved {removed} item(s)" + (f", {failed} failed" if failed else ""))
+    _eprint(f"to remove the package itself, run:\n    {_detect_install_tool()}")
+    return 1 if failed else 0
+
+
 class _AppBridge:
     """JS<->Python API exposed to the pywebview window.
 
@@ -1092,6 +1158,20 @@ def build_parser() -> argparse.ArgumentParser:
                     help="only the scrollback.app in ~/Applications (macOS; "
                          "falls back to the Desktop launcher elsewhere)")
     sp.set_defaults(func=cmd_install_launcher)
+
+    # uninstall
+    sp = sub.add_parser(
+        "uninstall",
+        help="remove scrollback-created artifacts (launchers, app, index)",
+        description="Remove files scrollback created (Desktop launcher, macOS "
+                    ".app, search index, launcher log). Your agent data is never "
+                    "touched. The Python package itself is removed with pip/pipx "
+                    "-- the exact command is printed at the end.",
+    )
+    sp.add_argument("-y", "--yes", action="store_true", help="skip the confirmation prompt")
+    sp.add_argument("--dry-run", action="store_true",
+                    help="show what would be removed, then exit")
+    sp.set_defaults(func=cmd_uninstall)
 
     return p
 

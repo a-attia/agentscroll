@@ -6,6 +6,14 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `scrollback uninstall`: removes the artifacts scrollback created (Desktop
+  launcher, macOS `.app`, optional search index, launcher log) with a
+  confirmation prompt (`--yes` / `--dry-run`). It never touches agent data
+  and never self-removes the package; it prints the right `pip`/`pipx
+  uninstall` command instead.
+
 ## [0.1.1] - 2026-06-30
 
 ### Fixed
