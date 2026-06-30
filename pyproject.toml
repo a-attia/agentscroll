@@ -66,10 +66,11 @@ path = "src/agentscroll/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentscroll"]
-# Non-Python package data (web assets + bundled launchers) shipped in the wheel.
+# Non-Python package data (web assets + launchers + app icon) shipped in the wheel.
 artifacts = [
     "src/agentscroll/web/static/**",
     "src/agentscroll/launchers/**",
+    "src/agentscroll/assets/**",
 ]
 
 [tool.ruff]

@@ -131,6 +131,17 @@ def _build_macos_app(dest: Path | None) -> Path:
 
     from . import __version__
 
+    # Copy the bundled .icns into Contents/Resources so Finder/Dock show it.
+    icon_line = ""
+    try:
+        icns = resources.files("agentscroll.assets").joinpath("icon.icns").read_bytes()
+        resources_dir = app / "Contents" / "Resources"
+        resources_dir.mkdir(parents=True, exist_ok=True)
+        (resources_dir / "agentscroll.icns").write_bytes(icns)
+        icon_line = "  <key>CFBundleIconFile</key><string>agentscroll</string>\n"
+    except (OSError, ModuleNotFoundError, FileNotFoundError):
+        pass  # icon is optional; bundle still works without it
+
     info = app / "Contents" / "Info.plist"
     info.write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -145,7 +156,8 @@ def _build_macos_app(dest: Path | None) -> Path:
         f"  <key>CFBundleShortVersionString</key><string>{__version__}</string>\n"
         "  <key>CFBundlePackageType</key><string>APPL</string>\n"
         "  <key>CFBundleExecutable</key><string>agentscroll</string>\n"
-        "  <key>LSUIElement</key><false/>\n"
+        + icon_line
+        + "  <key>LSUIElement</key><false/>\n"
         "</dict></plist>\n",
         encoding="utf-8",
     )
