@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install (with web + dev extras)
+        run: |
+          python -m pip install --upgrade pip
+          # pywebview needs a GUI backend that isn't present on CI runners;
+          # install the web API deps directly rather than the full [web] extra.
+          python -m pip install -e ".[dev]" fastapi uvicorn
+
+      - name: Lint (ruff)
+        run: ruff check src tests
+
+      - name: Test (pytest)
+        run: pytest -q
+
+  build:
+    name: build wheel + sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      - name: Check artifacts contain data files
+        run: |
+          python - <<'PY'
+          import glob, zipfile
+          whl = sorted(glob.glob("dist/*.whl"))[-1]
+          names = zipfile.ZipFile(whl).namelist()
+          need = ["web/static/app.js", "web/static/vendor/marked.min.js",
+                  "launchers/agentscroll.command", "assets/icon.icns"]
+          missing = [n for n in need if not any(n in x for x in names)]
+          assert not missing, f"wheel missing data files: {missing}"
+          print("wheel OK:", whl.split('/')[-1])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
