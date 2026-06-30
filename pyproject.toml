@@ -31,11 +31,16 @@ classifiers = [
 # (sqlite3, json, argparse). Optional extras pull in the web app + niceties.
 dependencies = []
 
+# The bare package stays dependency-free so `pip install agentscroll` works
+# anywhere (incl. headless/Linux servers). The web app pulls its own deps.
+# pywebview is included with [web] so the native app window works out of the
+# box; on Linux it additionally needs a system GTK/Qt WebKit backend, but its
+# absence only disables the native window (the browser fallback still works).
 [project.optional-dependencies]
-web = ["fastapi>=0.110", "uvicorn>=0.29", "jinja2>=3.1"]
-app = ["fastapi>=0.110", "uvicorn>=0.29", "pywebview>=5.0"]
+web = ["fastapi>=0.110", "uvicorn>=0.29", "jinja2>=3.1", "pywebview>=5.0"]
+app = ["agentscroll[web]"]
 rich = ["rich>=13.0"]
-dev = ["pytest>=8.0", "ruff>=0.4", "rich>=13.0"]
+dev = ["pytest>=8.0", "ruff>=0.4", "rich>=13.0", "pywebview>=5.0"]
 
 [project.scripts]
 agentscroll = "agentscroll.cli:main"

@@ -1,16 +1,16 @@
 @echo off
 REM Double-clickable launcher for Windows.
-REM Starts the agentscroll web app and opens it in your default browser.
+REM Starts the agentscroll web app in a standalone browser window.
 
 where agentscroll >nul 2>nul
 if %errorlevel%==0 (
-  agentscroll web
+  agentscroll web --window
   goto :eof
 )
 
 python -c "import agentscroll" >nul 2>nul
 if %errorlevel%==0 (
-  python -m agentscroll.cli web
+  python -m agentscroll.cli web --window
   goto :eof
 )
 

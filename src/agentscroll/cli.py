@@ -18,7 +18,7 @@ import argparse
 import sys
 from datetime import datetime, timezone
 
-from . import __version__, clipboard, export
+from . import __version__, clipboard, export, serverconfig
 from .models import Session
 from .sources import registry
 from .store import Store
@@ -293,24 +293,79 @@ def cmd_web(args: argparse.Namespace) -> int:
             "    pip install fastapi uvicorn"
         )
         return 1
+    from . import serverconfig
     from .web.app import create_app
 
-    app = create_app()
-    url = f"http://{args.host}:{args.port}"
+    # Resolve the actual port to bind: honour the requested one, but fall back
+    # to the next free port if it's taken (unless --strict-port). This keeps a
+    # single source of truth and avoids "started on a different port than the
+    # URL we opened" bugs -- the resolved port is used everywhere below.
+    try:
+        port = serverconfig.resolve_port(args.host, args.port, strict=args.strict_port)
+    except OSError as exc:
+        _eprint(str(exc))
+        return 1
+    if port != args.port:
+        _eprint(f"port {args.port} busy; using {port} instead")
+    args.port = port  # so downstream (app-window mode) sees the real port
 
-    # Desktop "app window" mode: run the server in a background thread and
-    # show it in a native window via pywebview (optional dependency).
+    url = f"http://{args.host}:{port}"
+
+    # Desktop "app window" mode: a true native window via pywebview. Closing
+    # the window quits the process -> server stops -> port is freed, and there
+    # is no terminal. If pywebview isn't available, fall back to a browser
+    # window (with heartbeat auto-shutdown) instead of failing.
     if getattr(args, "app", False):
-        return _run_app_window(app, args, url)
+        if _pywebview_available():
+            return _run_app_window(create_app(), args, url)
+        _eprint("native window unavailable (pywebview not installed/usable); "
+                "opening a browser window with auto-shutdown instead")
+        args.window = True
+        args.auto_shutdown = True  # browser fallback: stop server when window closes
+
+    # Optional heartbeat auto-shutdown: stop the server shortly after the
+    # browser window/tab is closed (so the port is freed without Ctrl-C).
+    server_holder: dict[str, object] = {}
+
+    def _on_idle() -> None:
+        srv = server_holder.get("server")
+        if srv is not None:
+            srv.should_exit = True
+
+    if getattr(args, "auto_shutdown", False):
+        app = create_app(on_idle=_on_idle, idle_timeout=10.0)
+    else:
+        app = create_app()
 
     _eprint(f"agentscroll web -> {url}  (read-only; Ctrl-C to stop)")
     if not args.no_browser:
         import threading
-        import webbrowser
 
-        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
-    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+        from . import webopen
+
+        # Open after a short delay so the server is accepting connections.
+        # `--window` asks for a standalone window; default opens a tab.
+        opener = webopen.open_window if args.window else _open_tab
+        threading.Timer(0.8, lambda: opener(url)).start()
+
+    server = uvicorn.Server(
+        uvicorn.Config(app, host=args.host, port=port, log_level="warning")
+    )
+    server_holder["server"] = server
+    server.run()
     return 0
+
+
+def _pywebview_available() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("webview") is not None
+
+
+def _open_tab(url: str) -> str:
+    import webbrowser
+
+    return "tab" if webbrowser.open(url) else "failed"
 
 
 def cmd_install_launcher(args: argparse.Namespace) -> int:
@@ -359,8 +414,11 @@ def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     t.start()
     _eprint(f"agentscroll app -> {url}  (read-only; close the window to quit)")
     webview.create_window("agentscroll", url, width=1280, height=860)
-    webview.start()
+    webview.start()  # blocks until the window is closed
+    # Window closed: stop the server and wait for the port to be released so
+    # an immediate relaunch can reuse it.
     server.should_exit = True
+    t.join(timeout=5)
     return 0
 
 
@@ -454,11 +512,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     # web
     sp = sub.add_parser("web", help="launch the local web app (read-only)")
-    sp.add_argument("--host", default="127.0.0.1", help="bind host (default localhost)")
-    sp.add_argument("-p", "--port", type=int, default=8765, help="port (default 8765)")
+    sp.add_argument("--host", default=serverconfig.default_host(),
+                    help="bind host (default localhost; or $AGENTSCROLL_HOST)")
+    sp.add_argument("-p", "--port", type=int, default=serverconfig.default_port(),
+                    help=f"port (default {serverconfig.DEFAULT_PORT}; or $AGENTSCROLL_PORT)")
+    sp.add_argument("--strict-port", action="store_true",
+                    help="fail if the port is busy instead of picking the next free one")
     sp.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    sp.add_argument("--window", action="store_true",
+                    help="open in a standalone browser window instead of a tab")
     sp.add_argument("--app", action="store_true",
-                    help="open in a native desktop window (needs the 'app' extra)")
+                    help="open in a native desktop window (auto-closes; needs pywebview)")
+    sp.add_argument("--auto-shutdown", action="store_true",
+                    help="stop the server shortly after the browser window is closed")
     sp.set_defaults(func=cmd_web)
 
     # install-launcher

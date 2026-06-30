@@ -848,6 +848,23 @@ function prefillSearchFromUrl() {
   return false;
 }
 
+// Heartbeat: when the server is launched with auto-shutdown, ping it on an
+// interval so it knows the window is still open. When the window/tab closes,
+// pings stop and the server shuts itself down (freeing the port).
+async function startHeartbeat() {
+  let cfg;
+  try {
+    cfg = await getJSON("/api/heartbeat-config");
+  } catch {
+    return;
+  }
+  if (!cfg || !cfg.enabled) return;
+  const ms = Math.max((cfg.interval || 3) * 1000, 1000);
+  const ping = () => { fetch("/api/heartbeat", { method: "POST", keepalive: true }).catch(() => {}); };
+  ping();
+  setInterval(ping, ms);
+}
+
 (async function boot() {
   initTheme();
   try {
@@ -856,6 +873,7 @@ function prefillSearchFromUrl() {
     updateScopeButtons();
     await loadListPage(true);
     if (location.hash) openFromHash();
+    startHeartbeat();
   } catch (err) {
     sessionsEl.replaceChildren(el("li", { class: "loading" }, "failed to load: " + err.message));
   }

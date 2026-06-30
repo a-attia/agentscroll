@@ -70,10 +70,26 @@ _EXT = {"markdown": "md", "md": "md", "json": "json", "html": "html",
         "text": "txt", "txt": "txt"}
 
 
-def create_app(store: Store | None = None) -> "FastAPI":
-    """Build the FastAPI app. A custom Store can be injected for tests."""
+def create_app(store: Store | None = None, *, on_idle=None, idle_timeout: float = 0.0):
+    """Build the FastAPI app. A custom Store can be injected for tests.
+
+    If `idle_timeout` > 0 and `on_idle` is provided, the app runs a watchdog:
+    the frontend pings `/api/heartbeat` periodically, and if no ping arrives
+    for `idle_timeout` seconds (i.e. the window was closed), `on_idle()` is
+    called -- used to auto-stop the server and free the port.
+    """
     app = FastAPI(title="agentscroll", version=__version__)
     _store = store if store is not None else Store()
+
+    watchdog_on = idle_timeout > 0 and on_idle is not None
+    if watchdog_on:
+        _install_heartbeat_watchdog(app, on_idle, idle_timeout)
+    else:
+        # Always expose the config endpoint so the frontend can ask once and
+        # skip heartbeats when auto-shutdown is not in effect.
+        @app.get("/api/heartbeat-config")
+        def heartbeat_config_off() -> dict[str, float]:
+            return {"interval": 0.0, "enabled": 0.0}
 
     # -- API ---------------------------------------------------------------
 
@@ -203,3 +219,37 @@ def create_app(store: Store | None = None) -> "FastAPI":
         app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
 
     return app
+
+
+def _install_heartbeat_watchdog(app: "FastAPI", on_idle, idle_timeout: float) -> None:
+    """Auto-stop when the page stops sending heartbeats (window closed).
+
+    The frontend POSTs /api/heartbeat on an interval. A background thread
+    checks the last-seen time; if it exceeds `idle_timeout`, it calls
+    `on_idle()` once. A grace period before the first heartbeat avoids
+    shutting down during initial page load.
+    """
+    import threading
+    import time
+
+    state = {"last": time.monotonic() + max(idle_timeout, 10.0), "fired": False}
+
+    @app.post("/api/heartbeat")
+    def heartbeat() -> dict[str, str]:
+        state["last"] = time.monotonic()
+        return {"status": "ok"}
+
+    @app.get("/api/heartbeat-config")
+    def heartbeat_config() -> dict[str, float]:
+        # Tell the client how often to ping (a third of the timeout).
+        return {"interval": max(idle_timeout / 3.0, 2.0), "enabled": 1.0}
+
+    def watch() -> None:
+        while not state["fired"]:
+            time.sleep(1.0)
+            if time.monotonic() - state["last"] > idle_timeout:
+                state["fired"] = True
+                on_idle()
+                return
+
+    threading.Thread(target=watch, daemon=True).start()

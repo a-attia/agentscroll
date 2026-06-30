@@ -141,3 +141,19 @@ def test_export_formats_and_headers(client):
 
     bad = client.get("/api/export/fake/s1?format=pdf")
     assert bad.status_code == 400
+
+
+def test_heartbeat_config_off_by_default(client):
+    cfg = client.get("/api/heartbeat-config").json()
+    assert cfg["enabled"] == 0.0
+
+
+def test_heartbeat_endpoints_enabled_with_watchdog():
+    # When a watchdog is configured, the config reports enabled and the
+    # heartbeat endpoint accepts pings. (The timing-based auto-shutdown has a
+    # >=10s grace period by design; its end-to-end behaviour is covered by a
+    # CLI smoke test rather than a slow unit test.)
+    app = create_app(Store([FakeSource()]), on_idle=lambda: None, idle_timeout=10.0)
+    c = TestClient(app)
+    assert c.get("/api/heartbeat-config").json()["enabled"] == 1.0
+    assert c.post("/api/heartbeat").json()["status"] == "ok"

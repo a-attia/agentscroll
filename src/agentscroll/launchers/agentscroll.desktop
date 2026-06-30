@@ -2,7 +2,7 @@
 Type=Application
 Name=agentscroll
 Comment=Browse your AI coding-agent sessions
-Exec=agentscroll web
+Exec=agentscroll web --window
 Terminal=false
 Categories=Development;Utility;
 # Install: copy to ~/.local/share/applications/ (and `chmod +x` if needed),

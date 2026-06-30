@@ -65,9 +65,10 @@ agentscroll export <id> -f json           # to stdout
 
 agentscroll copy latest -f markdown       # copy to clipboard
 
-agentscroll web                           # launch the local web app
+agentscroll web                           # launch the local web app (opens a tab)
+agentscroll web --window                  # open in a standalone browser window
 agentscroll web -p 9000 --no-browser      # custom port, don't auto-open
-agentscroll web --app                     # open in a native desktop window
+agentscroll web --app                     # native desktop window (needs [app] extra)
 ```
 
 ### Web app
@@ -106,33 +107,49 @@ Features:
 Deep links: the open session is reflected in the URL hash
 (`#opencode/<id>`), and `?q=<text>` pre-fills a content search.
 
-Install the web extra first: `pip install -e ".[web]"`.
+Install the web extra first: `pip install -e ".[web]"`. (The web extra
+includes `pywebview`, which provides the native app window below.)
 
 #### Launching without the terminal
 
 You don't have to type the full command every time. After
-`pip install agentscroll` you have several options:
+`pip install "agentscroll[web]"` you have several options:
 
 - **Short commands on PATH** (installed by pip):
   - `agentscroll-web` -- same as `agentscroll web`
   - `agentscroll-app` -- same as `agentscroll web --app`
 - **A double-clickable launcher**: run `agentscroll install-launcher`
   once. It drops the OS-appropriate launcher on your Desktop:
-  - macOS: `agentscroll.command` (first run: right-click -> Open). Add
-    `--app-bundle` to also create `~/Applications/agentscroll.app` (an
-    actual app icon you can double-click or pin to the Dock).
+  - macOS: `agentscroll.command`. Add `--app-bundle` to also create
+    `~/Applications/agentscroll.app` (an app icon you can double-click or
+    pin to the Dock -- this runs as a GUI app, with **no terminal**).
   - Windows: `agentscroll.bat`.
   - Linux: installs `agentscroll.desktop` into your application menu and
     drops `agentscroll.sh` on the Desktop.
   Use `--dest <dir>` to place it somewhere else.
-- **Desktop app window**: `agentscroll web --app` opens a native window
-  (no browser tab) via `pywebview` (`pip install "agentscroll[app]"`).
 
-All of these run the same local, read-only server; they differ only in
-how it's started and displayed. This keeps agentscroll platform-agnostic
-(no bundled native binary to maintain per OS). The launcher templates
-ship inside the package, so they work for `pip install` users -- not just
-source checkouts.
+**Window behaviour and clean shutdown.** The launchers run
+`agentscroll web --app`, which:
+
+- opens a **true native window** via `pywebview` (no browser tab, no
+  terminal); **closing the window stops the server and frees the port**.
+- if `pywebview` isn't usable (e.g. a headless Linux box without a GTK/Qt
+  WebKit backend), it falls back to a **standalone browser window** with a
+  **heartbeat**: the page pings the server, and when the window closes the
+  server auto-stops (~10s later) so the port is freed without Ctrl-C.
+
+This is all decided in Python (`webopen.py` / `serverconfig.py`); no
+OS-specific browser paths are baked into the launcher scripts. It keeps
+agentscroll platform-agnostic (no per-OS native binary to maintain), and
+the launcher templates ship inside the package so they work for
+`pip install` users, not just source checkouts.
+
+#### Choosing the port
+
+The server uses port `8765` by default. Override it with `--port`, or set
+`AGENTSCROLL_PORT` (and `AGENTSCROLL_HOST`) -- handy for launchers, which
+take no arguments. If the chosen port is busy, agentscroll automatically
+picks the next free one (use `--strict-port` to fail instead).
 
 #### How huge sessions stay fast
 

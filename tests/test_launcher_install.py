@@ -53,3 +53,18 @@ def test_macos_app_bundle(tmp_path):
     import stat
 
     assert os.stat(runner).st_mode & stat.S_IXUSR
+
+
+def test_runner_bakes_absolute_interpreter_path():
+    # Regression guard: GUI/Finder launches run with a minimal PATH that
+    # excludes conda/venv bins, so the runner must NOT rely on PATH lookup of
+    # `agentscroll` or a bare `python3`. It must bake sys.executable's path.
+    script = launcher_install._runner_script()
+    assert sys.executable in script
+    assert "agentscroll.cli web" in script
+
+
+def test_command_script_bakes_absolute_interpreter_path():
+    script = launcher_install._command_script()
+    assert sys.executable in script
+    assert "agentscroll.cli web" in script
