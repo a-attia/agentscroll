@@ -42,6 +42,77 @@ _META_CACHE: dict[str, tuple[tuple[float, int], dict[str, Any] | None]] = {}
 _META_CACHE_MAX = 4096
 
 
+# Cache of byte offsets for the content-bearing message lines of a transcript,
+# keyed by (path, mtime_ns, size). Lets load_messages seek directly to the Nth
+# message instead of re-scanning the file from the top for every page, turning
+# K-page traversal from O(K*n) into O(n + K*page).
+_OFFSET_CACHE: dict[str, tuple[tuple[int, int], list[int]]] = {}
+_OFFSET_CACHE_MAX = 512
+
+
+def _content_line_offsets(path: Path) -> list[int]:
+    """Byte offsets of each content-bearing user/assistant line in `path`.
+
+    "Content-bearing" matches load_messages' own filter (user/assistant,
+    not meta, with at least one renderable part). Built in a single pass and
+    cached on the file's mtime+size.
+    """
+    try:
+        st = path.stat()
+        sig = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return []
+    key = str(path)
+    hit = _OFFSET_CACHE.get(key)
+    if hit is not None and hit[0] == sig:
+        return hit[1]
+
+    offsets: list[int] = []
+    try:
+        # Read in binary to track exact byte offsets; decode per line.
+        with path.open("rb") as fh:
+            pos = 0
+            for raw in fh:
+                line_start = pos
+                pos += len(raw)
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line.decode("utf-8", "replace"))
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(obj, dict):
+                    continue
+                t = obj.get("type")
+                if t not in ("user", "assistant") or obj.get("isMeta"):
+                    continue
+                m = obj.get("message")
+                if not isinstance(m, dict):
+                    continue
+                if _content_to_parts("probe", m.get("content")):
+                    offsets.append(line_start)
+    except OSError:
+        return []
+
+    if len(_OFFSET_CACHE) >= _OFFSET_CACHE_MAX:
+        _OFFSET_CACHE.clear()
+    _OFFSET_CACHE[key] = (sig, offsets)
+    return offsets
+
+
+def _read_line_at(path: Path, byte_offset: int) -> dict[str, Any] | None:
+    """Parse the single JSONL record starting at `byte_offset`."""
+    try:
+        with path.open("rb") as fh:
+            fh.seek(byte_offset)
+            raw = fh.readline()
+        obj = json.loads(raw.decode("utf-8", "replace"))
+        return obj if isinstance(obj, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _cached_scan_metadata(path: Path) -> dict[str, Any] | None:
     try:
         st = path.stat()
@@ -264,37 +335,32 @@ class ClaudeCodeSource(Source):
         path = self._find_path(session_id)
         if path is None:
             return []
+        # Use the cached byte-offset index to seek directly to the requested
+        # window instead of re-scanning from the top of the file each page.
+        offsets = _content_line_offsets(path)
+        window = offsets[offset:] if limit is None else offsets[offset : offset + limit]
         out: list[Message] = []
-        idx = 0          # index among emitted (content-bearing) messages
-        seen = 0         # index among all user/assistant turns
-        for obj in _iter_lines(path):
-            t = obj.get("type")
-            if t not in ("user", "assistant") or obj.get("isMeta"):
+        for i, byte_off in enumerate(window):
+            obj = _read_line_at(path, byte_off)
+            if obj is None:
                 continue
             m = obj.get("message", {})
             if not isinstance(m, dict):
                 continue
-            uuid = obj.get("uuid") or f"{path.stem}:{seen}"
-            seen += 1
+            uuid = obj.get("uuid") or f"{path.stem}:{offset + i}"
             parts = _content_to_parts(uuid, m.get("content"))
             if not parts:
-                continue
-            if idx < offset:
-                idx += 1
                 continue
             out.append(
                 Message(
                     id=uuid,
-                    role=m.get("role", t),
+                    role=m.get("role", obj.get("type")),
                     created=_to_dt(obj.get("timestamp")),
                     parts=tuple(parts),
                     model=_clean_model(m.get("model")),
                     raw=obj,
                 )
             )
-            idx += 1
-            if limit is not None and len(out) >= limit:
-                break
         return out
 
 
