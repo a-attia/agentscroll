@@ -27,6 +27,17 @@ def test_to_dt_none_and_garbage():
     assert _to_dt("not-a-date") is None
 
 
+def test_to_dt_tzless_iso_is_made_aware():
+    # Regression: a timezone-less ISO timestamp must become tz-aware (UTC),
+    # otherwise sorting it alongside aware datetimes raises TypeError.
+    dt = _to_dt("2024-01-01T00:00:00")  # no Z / offset
+    assert dt is not None
+    assert dt.tzinfo is not None
+    # And it must be comparable with an aware datetime (no crash).
+    aware = _to_dt("2024-01-02T00:00:00Z")
+    assert sorted([aware, dt]) == [dt, aware]
+
+
 def test_message_text_concatenates_textual_parts():
     parts = (
         Part(id="1", type="text", text="hello"),

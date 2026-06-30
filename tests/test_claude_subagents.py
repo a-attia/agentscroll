@@ -104,3 +104,17 @@ def test_parent_without_subagents_has_no_children(tmp_path):
     src = ClaudeCodeSource(root=projects)
     parent = list(src.list_sessions())[0]
     assert parent.children == ()
+
+
+def test_subagent_id_rejects_path_traversal(tmp_path, claude_root):
+    # Regression: a crafted child id must not escape the subagents dir.
+    src = ClaudeCodeSource(root=claude_root)
+    parent_id = list(src.list_sessions())[0].id
+    # Plant a secret .jsonl outside the project tree.
+    secret = tmp_path / "secret.jsonl"
+    secret.write_text('{"type":"user","message":{"role":"user","content":"x"}}\n')
+    evil = f"{parent_id}::../../../../{secret.stem}"
+    assert src._find_path(evil) is None
+    assert src.load_session(evil) is None
+    # A separator-bearing id with backslashes / dotdot is also rejected.
+    assert src._find_path(f"{parent_id}::..\\..\\x") is None

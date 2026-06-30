@@ -5,7 +5,30 @@ from datetime import timezone
 
 import pytest
 
-from agentscroll.cli import _fmt_cost, _fmt_tokens, _parse_date
+from agentscroll.cli import (
+    _fmt_cost,
+    _fmt_tokens,
+    _nonneg_int,
+    _parse_date,
+    _positive_int,
+)
+
+
+def test_nonneg_int():
+    assert _nonneg_int("0") == 0
+    assert _nonneg_int("5") == 5
+    with pytest.raises(argparse.ArgumentTypeError):
+        _nonneg_int("-1")
+    with pytest.raises(argparse.ArgumentTypeError):
+        _nonneg_int("x")
+
+
+def test_positive_int():
+    assert _positive_int("1") == 1
+    with pytest.raises(argparse.ArgumentTypeError):
+        _positive_int("0")
+    with pytest.raises(argparse.ArgumentTypeError):
+        _positive_int("-3")
 
 
 def test_parse_date_ymd():

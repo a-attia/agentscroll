@@ -93,3 +93,13 @@ def test_fold_keeps_orphan_subagent_at_top():
     store = Store([FakeSource(sessions)])
     folded = store.list_sessions(fold_subagents=True)
     assert [s.id for s in folded] == ["x"]
+
+
+def test_fold_self_referential_parent_is_not_dropped():
+    # Regression: a session whose parent_id == its own id must stay top-level,
+    # not silently disappear.
+    sessions = [_mk("self", 5, parent="self")]
+    store = Store([FakeSource(sessions)])
+    folded = store.list_sessions(fold_subagents=True)
+    assert [s.id for s in folded] == ["self"]
+    assert folded[0].children == ()
