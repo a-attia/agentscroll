@@ -9,9 +9,9 @@ import os
 
 import pytest
 
-from agentscroll.sources.claudecode import ClaudeCodeSource
-from agentscroll.sources.opencode import OpenCodeSource
-from agentscroll.store import Store
+from scrollback.sources.claudecode import ClaudeCodeSource
+from scrollback.sources.opencode import OpenCodeSource
+from scrollback.store import Store
 
 
 def _mtime(path) -> float:

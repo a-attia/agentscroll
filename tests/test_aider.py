@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from agentscroll.sources.aider import AiderSource, _is_unsafe_root, _search_roots
+from scrollback.sources.aider import AiderSource, _is_unsafe_root, _search_roots
 
 _HISTORY = """# aider chat started at 2025-01-31 12:34:56
 
@@ -38,9 +38,9 @@ def test_aider_not_available_when_empty(tmp_path):
 
 
 def test_aider_does_not_scan_without_optin(monkeypatch):
-    # No AGENTSCROLL_AIDER_DIRS => no roots => Aider is unavailable and never
+    # No SCROLLBACK_AIDER_DIRS => no roots => Aider is unavailable and never
     # walks the filesystem (prevents macOS permission prompts on app launch).
-    monkeypatch.delenv("AGENTSCROLL_AIDER_DIRS", raising=False)
+    monkeypatch.delenv("SCROLLBACK_AIDER_DIRS", raising=False)
     assert _search_roots() == []
     assert AiderSource().is_available() is False
 
@@ -56,7 +56,7 @@ def test_aider_refuses_unsafe_roots():
 
 def test_aider_optin_via_env(tmp_path, monkeypatch):
     proj = _project(tmp_path)
-    monkeypatch.setenv("AGENTSCROLL_AIDER_DIRS", str(proj.parent))
+    monkeypatch.setenv("SCROLLBACK_AIDER_DIRS", str(proj.parent))
     src = AiderSource()  # picks up the env var
     assert src.is_available() is True
     assert len(list(src.list_sessions())) == 2

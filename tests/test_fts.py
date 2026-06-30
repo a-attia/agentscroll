@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from agentscroll import fts
-from agentscroll.models import Message, Part, Session
-from agentscroll.sources.base import Source
-from agentscroll.store import Store
+from scrollback import fts
+from scrollback.models import Message, Part, Session
+from scrollback.sources.base import Source
+from scrollback.store import Store
 
 pytestmark = pytest.mark.skipif(
     not fts.fts5_available(), reason="SQLite FTS5 not available in this build"
@@ -128,7 +128,7 @@ def test_is_stale_detects_source_changes(tmp_path):
     import json
     import time
 
-    from agentscroll.sources.claudecode import ClaudeCodeSource
+    from scrollback.sources.claudecode import ClaudeCodeSource
 
     proj = tmp_path / "projects" / "-p"
     proj.mkdir(parents=True)

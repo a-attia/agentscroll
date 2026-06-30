@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from agentscroll.sources.codex import CodexSource
+from scrollback.sources.codex import CodexSource
 
 
 def _rollout(tmp_path: Path, rows: list[dict]) -> Path:

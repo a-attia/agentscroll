@@ -10,19 +10,19 @@ from importlib import resources
 
 import pytest
 
-from agentscroll import launcher_install
+from scrollback import launcher_install
 
 
 def test_launcher_templates_are_packaged():
     # All four templates must be importable as package data (i.e. shipped).
     for name in (
-        "agentscroll.command",
-        "agentscroll.bat",
-        "agentscroll.sh",
-        "agentscroll.desktop",
+        "scrollback.command",
+        "scrollback.bat",
+        "scrollback.sh",
+        "scrollback.desktop",
     ):
-        text = resources.files("agentscroll.launchers").joinpath(name).read_text()
-        assert "agentscroll" in text
+        text = resources.files("scrollback.launchers").joinpath(name).read_text()
+        assert "scrollback" in text
 
 
 def test_install_writes_into_dest(tmp_path):
@@ -33,20 +33,42 @@ def test_install_writes_into_dest(tmp_path):
     # The platform-appropriate primary launcher should be present.
     names = {p.name for p in created}
     if sys.platform == "darwin":
-        assert "agentscroll.command" in names
+        assert "scrollback.command" in names
     elif sys.platform == "win32":
-        assert "agentscroll.bat" in names
+        assert "scrollback.bat" in names
     else:
-        assert "agentscroll.desktop" in names
+        assert "scrollback.desktop" in names
+
+
+def test_install_no_flags_creates_everything_on_macos(tmp_path):
+    # Bare install (neither selector) = give me everything. On macOS that is
+    # the Desktop launcher AND the .app bundle.
+    created = launcher_install.install(tmp_path)
+    names = {p.name for p in created}
+    if sys.platform == "darwin":
+        assert "scrollback.command" in names
+        assert "scrollback.app" in names
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS-specific selectors")
+def test_desktop_only_skips_app(tmp_path):
+    created = launcher_install.install(tmp_path, desktop=True)
+    names = {p.name for p in created}
+    assert "scrollback.command" in names
+    assert "scrollback.app" not in names
 
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="macOS .app bundle only")
-def test_macos_app_bundle(tmp_path):
+def test_app_bundle_only_skips_desktop_command(tmp_path):
+    # --app-bundle alone yields ONLY the .app -- no loose .command file.
     created = launcher_install.install(tmp_path, app_bundle=True)
-    app = next((p for p in created if p.name == "agentscroll.app"), None)
-    assert app is not None
+    names = {p.name for p in created}
+    assert "scrollback.app" in names
+    assert "scrollback.command" not in names
+
+    app = next(p for p in created if p.name == "scrollback.app")
     assert (app / "Contents" / "Info.plist").is_file()
-    runner = app / "Contents" / "MacOS" / "agentscroll"
+    runner = app / "Contents" / "MacOS" / "scrollback"
     assert runner.is_file()
     # Runner must be executable.
     import os
@@ -55,16 +77,25 @@ def test_macos_app_bundle(tmp_path):
     assert os.stat(runner).st_mode & stat.S_IXUSR
 
 
+@pytest.mark.skipif(sys.platform == "darwin", reason="non-macOS fallback")
+def test_app_bundle_falls_back_to_desktop_launcher(tmp_path):
+    # On Windows/Linux there is no .app, so --app-bundle still installs the
+    # platform's clickable launcher instead of erroring.
+    created = launcher_install.install(tmp_path, app_bundle=True)
+    assert created
+    assert not any(p.name == "scrollback.app" for p in created)
+
+
 def test_runner_bakes_absolute_interpreter_path():
     # Regression guard: GUI/Finder launches run with a minimal PATH that
     # excludes conda/venv bins, so the runner must NOT rely on PATH lookup of
-    # `agentscroll` or a bare `python3`. It must bake sys.executable's path.
+    # `scrollback` or a bare `python3`. It must bake sys.executable's path.
     script = launcher_install._runner_script()
     assert sys.executable in script
-    assert "agentscroll.cli web" in script
+    assert "scrollback.cli web" in script
 
 
 def test_command_script_bakes_absolute_interpreter_path():
     script = launcher_install._command_script()
     assert sys.executable in script
-    assert "agentscroll.cli web" in script
+    assert "scrollback.cli web" in script

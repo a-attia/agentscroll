@@ -2,7 +2,7 @@
 
 from datetime import timezone
 
-from agentscroll.models import Message, Part, Session, _to_dt
+from scrollback.models import Message, Part, Session, _to_dt
 
 
 def test_to_dt_epoch_millis():

@@ -1,12 +1,12 @@
 # Roadmap
 
-Planned work for agentscroll, with the research behind it so the next
+Planned work for scrollback, with the research behind it so the next
 contributor doesn't have to re-derive it. This is a living document; the
 current state of what *is* built lives in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Planned source adapters
 
-agentscroll currently reads **opencode**, **Claude Code**, **Codex**, and
+scrollback currently reads **opencode**, **Claude Code**, **Codex**, and
 **Aider**. The agents below were researched (formats, locations,
 feasibility) but not yet implemented. The table records the verdict so the
 effort and risk are known up front.
@@ -22,7 +22,7 @@ effort and risk are known up front.
 
 ### Implementing one
 
-Each adapter is a `Source` subclass in `src/agentscroll/sources/` registered
+Each adapter is a `Source` subclass in `src/scrollback/sources/` registered
 in `registry.py`; see [`CONTRIBUTING.md`](CONTRIBUTING.md) and the existing
 JSONL (`codex.py`, `claudecode.py`) and SQLite (`opencode.py`) adapters as
 references. The same checklist applies to every new adapter:
@@ -35,43 +35,26 @@ references. The same checklist applies to every new adapter:
 
 ## Math / equation rendering
 
-Give users control over how mathematical notation in transcripts is
-displayed and exported. This matters for a scientific audience: a model
-often replies with LaTeX (`$\nabla \cdot u = 0$`), and a researcher may want
-that LaTeX preserved verbatim for pasting into a paper, while another reader
-just wants to see the rendered equation.
+**Done** (steps 1–4 below shipped; see [`CHANGELOG.md`](CHANGELOG.md)).
+Delimited LaTeX (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`) is detected and
+shielded from the Markdown pass in both renderers; a `raw` / `latex` /
+`rendered` mode is exposed as a web header toggle (persisted like the theme)
+and an `--math` flag on `export` / `copy`; typesetting uses vendored KaTeX,
+inlined (fonts and all) into the self-contained HTML export so it works
+offline. The single-`$` form is detected conservatively to avoid currency
+and code false positives.
 
-The hard part is that math appears in three forms, only the first of which
-is unambiguous: delimited LaTeX (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`),
-Unicode math (`∇·u = 0`, `x²`), and plain ASCII (`x^2 + y^2`). The plan
-targets delimited LaTeX first, since it can be detected reliably.
+Math appears in three forms, only the first of which is unambiguous:
+delimited LaTeX (handled), Unicode math (`∇·u = 0`, `x²`), and plain ASCII
+(`x^2 + y^2`). The latter two remain **out of scope** — detecting them means
+guessing, with false positives in ordinary prose and code.
 
-Planned scope, smallest-to-largest:
+Remaining open ideas (not planned):
 
-1. **Protect LaTeX spans from the Markdown renderer (correctness; do first).**
-   Today the Markdown pass can mangle `\`, `_`, `*`, `^` inside `$...$`.
-   Detect and shield delimited-math regions before Markdown processing in
-   both the browser renderer and the dependency-free export renderer
-   (`minimd.py`), so equations survive intact even with no rendering.
-2. **A render-mode setting** with three values:
-   - `raw` — current behaviour (verbatim text).
-   - `latex` — show the LaTeX source verbatim, never mangled (best for
-     copy-into-a-paper).
-   - `rendered` — typeset the math.
-   Surface it as a toggle in the web transcript header (alongside
-   reasoning/tools) and persist it like the theme.
-3. **Typesetting** via a vendored, local math library (KaTeX preferred —
-   smaller and faster than MathJax; no CDN, consistent with the existing
-   `marked` / `highlight.js` / DOMPurify vendoring). The self-contained HTML
-   export embeds the same renderer so printed/saved files typeset offline.
-4. **An export flag** `--math {raw,latex,rendered}` on `agentscroll export`
-   (and the web export/print actions), so a scientist can guarantee LaTeX is
-   preserved when exporting for a manuscript.
-
-Open questions to resolve when building: whether to attempt Unicode/ASCII →
-LaTeX normalization (likely out of scope — too lossy), and how aggressively
-to auto-detect undelimited math (probably not at all, to avoid false
-positives in code/prose).
+- Unicode/ASCII → LaTeX normalization — likely too lossy to be worth it.
+- A `tex` export format that emits a ready-to-`\input` LaTeX document
+  (distinct from the current verbatim-preservation `--math latex`).
+- Per-equation copy-the-LaTeX affordance in the rendered web view.
 
 ## Other ideas
 

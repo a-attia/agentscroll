@@ -1,10 +1,10 @@
-"""Tests for the portable window-opening helper (agentscroll.webopen).
+"""Tests for the portable window-opening helper (scrollback.webopen).
 
 These avoid actually launching a browser by stubbing the discovery and
 subprocess calls, so they are deterministic and cross-platform.
 """
 
-from agentscroll import webopen
+from scrollback import webopen
 
 
 def test_open_window_uses_app_mode_when_chromium_found(monkeypatch):

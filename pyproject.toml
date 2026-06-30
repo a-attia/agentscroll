@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentscroll"
+name = "scrollback"
 dynamic = ["version"]
 description = "Navigate, search, copy, and export your AI coding-agent sessions (opencode, Claude Code, ...) from one local, read-only tool."
 readme = "README.md"
@@ -38,15 +38,19 @@ classifiers = [
 # (sqlite3, json, argparse). Optional extras pull in the web app + niceties.
 dependencies = []
 
-# The bare package stays dependency-free so `pip install agentscroll` works
+# The bare package stays dependency-free so `pip install scrollback` works
 # anywhere (incl. headless/Linux servers). The web app pulls its own deps.
 # pywebview is included with [web] so the native app window works out of the
 # box; on Linux it additionally needs a system GTK/Qt WebKit backend, but its
 # absence only disables the native window (the browser fallback still works).
 [project.optional-dependencies]
 web = ["fastapi>=0.110", "uvicorn>=0.29", "jinja2>=3.1", "pywebview>=5.0"]
-app = ["agentscroll[web]"]
+app = ["scrollback[web]"]
 rich = ["rich>=13.0"]
+# Everything an end user might want at runtime: the web app + native window
+# (web) and coloured terminal output (rich). Deliberately excludes `dev`,
+# which is test/lint tooling, not a runtime feature.
+all = ["scrollback[web,rich]"]
 # dev is self-sufficient for the full test suite: the web-API tests need
 # fastapi/uvicorn + an HTTP client for Starlette's TestClient (httpx), and
 # the colour-output tests need rich. pywebview is NOT included here -- it
@@ -61,27 +65,27 @@ dev = [
 ]
 
 [project.scripts]
-agentscroll = "agentscroll.cli:main"
+scrollback = "scrollback.cli:main"
 # Convenience entry points installed on PATH by pip, so users don't have to
-# type the subcommand. `agentscroll-web` == `agentscroll web`, etc.
-agentscroll-web = "agentscroll.cli:main_web"
-agentscroll-app = "agentscroll.cli:main_app"
+# type the subcommand. `scrollback-web` == `scrollback web`, etc.
+scrollback-web = "scrollback.cli:main_web"
+scrollback-app = "scrollback.cli:main_app"
 
 [project.urls]
-Homepage = "https://github.com/a-attia/agentscroll"
-Repository = "https://github.com/a-attia/agentscroll"
-Issues = "https://github.com/a-attia/agentscroll/issues"
+Homepage = "https://github.com/a-attia/scrollback"
+Repository = "https://github.com/a-attia/scrollback"
+Issues = "https://github.com/a-attia/scrollback/issues"
 
 [tool.hatch.version]
-path = "src/agentscroll/__init__.py"
+path = "src/scrollback/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/agentscroll"]
+packages = ["src/scrollback"]
 # Non-Python package data (web assets + launchers + app icon) shipped in the wheel.
 artifacts = [
-    "src/agentscroll/web/static/**",
-    "src/agentscroll/launchers/**",
-    "src/agentscroll/assets/**",
+    "src/scrollback/web/static/**",
+    "src/scrollback/launchers/**",
+    "src/scrollback/assets/**",
 ]
 
 [tool.ruff]

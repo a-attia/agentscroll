@@ -7,8 +7,8 @@ deterministic and independent of the machine.
 import json
 from datetime import datetime, timezone
 
-from agentscroll import export
-from agentscroll.models import Message, Part, Session
+from scrollback import export
+from scrollback.models import Message, Part, Session
 
 
 def _sample_session() -> Session:
@@ -97,6 +97,45 @@ def test_text_default_hides_reasoning():
     assert "They want ls." not in txt  # reasoning off by default
     assert "Use `ls`." in txt
     assert "[tool:bash]" in txt
+
+
+def _math_session() -> Session:
+    text = r"Maxwell: $$\nabla \cdot E = \rho/\epsilon_0$$ and inline $a_i^2$."
+    msg = Message(id="m1", role="assistant", created=None,
+                  parts=(Part(id="p1", type="text", text=text),))
+    return Session(id="s", source="opencode", title="phys", directory=None,
+                   created=None, updated=None, messages=(msg,), message_count=1)
+
+
+def test_html_math_raw_preserves_source_unmangled():
+    html = export.to_html(_math_session(), math="raw")
+    # The LaTeX survives verbatim -- the underscore/backslash are not mangled.
+    assert r"\nabla \cdot E" in html
+    assert "$a_i^2$" in html
+    assert "<em>" not in html  # the lone subscript underscore is not emphasis
+
+
+def test_html_math_latex_wraps_verbatim():
+    html = export.to_html(_math_session(), math="latex")
+    assert '<code class="math-src">$a_i^2$</code>' in html
+    assert "data:font/woff2" not in html  # no KaTeX embedded in latex mode
+
+
+def test_html_math_rendered_embeds_katex_offline():
+    html = export.to_html(_math_session(), math="rendered")
+    assert 'class="math-tex' in html
+    assert 'data-display="true"' in html  # the display $$...$$ span
+    # Self-contained: KaTeX JS + fonts inlined, no external asset refs.
+    assert "katex" in html.lower()
+    assert "data:font/woff2" in html
+    assert "url(fonts/" not in html
+
+
+def test_markdown_and_text_math_is_noop_verbatim():
+    md = export.to_markdown(_math_session(), math="latex")
+    assert r"$$\nabla \cdot E = \rho/\epsilon_0$$" in md
+    txt = export.to_text(_math_session(), math="rendered")
+    assert "$a_i^2$" in txt
 
 
 def test_render_unknown_format_raises():

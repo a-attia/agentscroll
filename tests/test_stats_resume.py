@@ -2,9 +2,9 @@
 
 from datetime import datetime, timezone
 
-from agentscroll.models import Session
-from agentscroll.sources.base import Source
-from agentscroll.store import Store
+from scrollback.models import Session
+from scrollback.sources.base import Source
+from scrollback.store import Store
 
 
 def _mk(sid, source, day, *, directory, messages, ti=0, to=0, cost=0.0):

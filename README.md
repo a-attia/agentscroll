@@ -1,14 +1,14 @@
-# agentscroll
+# scrollback
 
-[![CI](https://github.com/a-attia/agentscroll/actions/workflows/ci.yml/badge.svg)](https://github.com/a-attia/agentscroll/actions/workflows/ci.yml)
+[![CI](https://github.com/a-attia/scrollback/actions/workflows/ci.yml/badge.svg)](https://github.com/a-attia/scrollback/actions/workflows/ci.yml)
 
 Browse, search, copy, and export your AI coding-agent sessions from one
-local, read-only tool. agentscroll reads the conversation history that
+local, read-only tool. scrollback reads the conversation history that
 agents like **opencode** and **Claude Code** already keep on disk and gives
 you a single, consistent view across them — from a scriptable command line
 or a local web app.
 
-Everything is local-first and strictly **read-only**: agentscroll never
+Everything is local-first and strictly **read-only**: scrollback never
 modifies, locks for writing, or uploads your data.
 
 > **For AI agents:** read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
@@ -16,7 +16,7 @@ modifies, locks for writing, or uploads your data.
 
 ## Contents
 
-- [Why agentscroll](#why-agentscroll)
+- [Why scrollback](#why-scrollback)
 - [Install](#install)
 - [Quick start](#quick-start)
 - [The command line](#the-command-line)
@@ -29,11 +29,11 @@ modifies, locks for writing, or uploads your data.
 - [Development](#development)
 - [License](#license)
 
-## Why agentscroll
+## Why scrollback
 
 AI coding agents persist rich session data locally, but each in its own
 format and with no convenient way to browse that history or take it with
-you. agentscroll fills that gap with four things:
+you. scrollback fills that gap with four things:
 
 - **See** any past conversation as a readable transcript.
 - **Search** across every session by keyword (title or full text).
@@ -48,28 +48,44 @@ on-disk stores (no sync step, no plugins, no upload), and treats
 ## Install
 
 ```bash
-pip install -e ".[web]"     # from a local clone: CLI + web app
+pip install "scrollback[all]"      # CLI + web app + native window + colour
 ```
 
-agentscroll is not yet published to PyPI; install from a clone for now.
 Requires Python 3.10+. The bare CLI has **no runtime dependencies**
 (standard library only); optional features come from extras:
 
-- `".[web]"` — the local web app (FastAPI, uvicorn) and the native app
-  window (pywebview).
-- `".[rich]"` — coloured terminal output.
-- `".[dev]"` — test and lint tooling.
+- `"scrollback[web]"` — the local web app (FastAPI, uvicorn) and the native
+  app window (pywebview).
+- `"scrollback[rich]"` — coloured terminal output.
+- `"scrollback[all]"` — everything a user might want at runtime (`web` + `rich`).
+
+If you'd rather keep it isolated from your system Python (recommended, but
+optional), [`pipx`](https://pipx.pypa.io) installs it in its own environment
+and still puts the `scrollback` command on your PATH:
+
+```bash
+pipx install "scrollback[all]"
+```
+
+Either way, plain `pip` works the same; `pipx` is just a convenience.
+
+From a local clone (for development), use an editable install with the dev
+extra:
+
+```bash
+pip install -e ".[web,dev]"
+```
 
 ## Quick start
 
 ```bash
-agentscroll doctor          # what was detected on this machine?
-agentscroll list            # recent sessions, newest first
-agentscroll show latest     # print the most recent transcript
-agentscroll web             # open the browser UI
+scrollback doctor          # what was detected on this machine?
+scrollback list            # recent sessions, newest first
+scrollback show latest     # print the most recent transcript
+scrollback web             # open the browser UI
 ```
 
-`agentscroll doctor` is the best first command: it reports which agents
+`scrollback doctor` is the best first command: it reports which agents
 were found, how many sessions each has, and which optional features are
 available.
 
@@ -82,15 +98,15 @@ source-qualified id (`opencode:ses_0eae9810`), or the keyword `latest`.
 ### Listing and viewing
 
 ```bash
-agentscroll list --source opencode -n 10   # one source, 10 rows
-agentscroll list --dir myproject           # filter by directory substring
-agentscroll list -q "refactor"             # filter by title substring
-agentscroll list --since 2026-06-01 --until 2026-06-30   # date range
-agentscroll list --usage                   # add cost + token (in/out) columns
-agentscroll list -n 20 --page 2            # pagination (page size = --limit)
+scrollback list --source opencode -n 10   # one source, 10 rows
+scrollback list --dir myproject           # filter by directory substring
+scrollback list -q "refactor"             # filter by title substring
+scrollback list --since 2026-06-01 --until 2026-06-30   # date range
+scrollback list --usage                   # add cost + token (in/out) columns
+scrollback list -n 20 --page 2            # pagination (page size = --limit)
 
-agentscroll show latest --reasoning        # include the model's thinking
-agentscroll show <selector> --no-tools     # hide tool calls and output
+scrollback show latest --reasoning        # include the model's thinking
+scrollback show <selector> --no-tools     # hide tool calls and output
 ```
 
 By default, subagent sessions (for example opencode `@explore` subagents)
@@ -101,8 +117,8 @@ terminal; piping, or `--plain`, falls back to plain text.
 ### Searching
 
 ```bash
-agentscroll search "merge conflict"        # full-text across all sessions
-agentscroll search "ssh" --source opencode --json
+scrollback search "merge conflict"        # full-text across all sessions
+scrollback search "ssh" --source opencode --json
 ```
 
 Search scans message text across sessions. On a large history you can make
@@ -111,10 +127,11 @@ it near-instant with an [optional index](#fast-search-optional-index).
 ### Exporting and copying
 
 ```bash
-agentscroll export latest -f markdown -o session.md
-agentscroll export <selector> -f html -o session.html
-agentscroll export <selector> -f json      # to stdout
-agentscroll copy latest -f markdown        # render and copy to the clipboard
+scrollback export latest -f markdown -o session.md
+scrollback export <selector> -f html -o session.html
+scrollback export <selector> -f html --math rendered -o session.html
+scrollback export <selector> -f json      # to stdout
+scrollback copy latest -f markdown        # render and copy to the clipboard
 ```
 
 The formats are `markdown` (`md`), `json`, `html`, and `text` (`txt`).
@@ -124,12 +141,20 @@ faithful structured dump with bulky raw blobs stripped for readability.
 Exported HTML and Markdown render the assistant's Markdown with syntax-
 highlighted code, and the HTML is a self-contained file that prints well.
 
+Mathematical notation in delimited LaTeX (`$...$`, `$$...$$`, `\(...\)`,
+`\[...\]`) is preserved verbatim in every format, never mangled by the
+Markdown pass. `--math` controls how the HTML export treats it: `raw`
+(verbatim source, the default), `latex` (verbatim, marked never-to-typeset
+— best for pasting into a paper), or `rendered` (typeset with KaTeX, which
+is embedded into the file with its fonts so the equations render offline).
+In the web app the same choice is a `math:` toggle in the transcript header.
+
 ### Stats and resume
 
 ```bash
-agentscroll stats                          # totals, by-source + top projects
-agentscroll resume latest                  # print the native resume command
-agentscroll resume <selector> --copy       # ...and copy it to the clipboard
+scrollback stats                          # totals, by-source + top projects
+scrollback resume latest                  # print the native resume command
+scrollback resume <selector> --copy       # ...and copy it to the clipboard
 ```
 
 `stats` aggregates session counts, message/token/cost totals, and your
@@ -139,11 +164,11 @@ with a `cd` into the session's project directory.
 
 ## The web app
 
-`agentscroll web` starts a local, read-only browser UI — FastAPI plus a
+`scrollback web` starts a local, read-only browser UI — FastAPI plus a
 small vanilla-JavaScript frontend with no build step — bound to
-`127.0.0.1`. Open it with `agentscroll web` (a browser tab),
-`agentscroll web --window` (a standalone browser window), or
-`agentscroll web --app` (a native desktop window; see
+`127.0.0.1`. Open it with `scrollback web` (a browser tab),
+`scrollback web --window` (a standalone browser window), or
+`scrollback web --app` (a native desktop window; see
 [Running it as an app](#running-it-as-an-app)).
 
 What it offers:
@@ -155,12 +180,14 @@ What it offers:
   **contents**, or both at once (combined results are grouped).
 - **Subagents** collapsed under their parent, expandable on demand
   (including Claude Code's nested sidechain transcripts).
-- A **transcript reader** with a frozen header and a scrolling message
-  body, **Markdown rendering with syntax highlighting**, in-transcript
-  find, reasoning/tools toggles, and per-message and per-session copy.
+- A **transcript reader** with a **collapsible** frozen header (auto-
+  collapses as you scroll; toggle with `h`) over a scrolling message body,
+  **Markdown rendering with syntax highlighting**, **LaTeX math** (source /
+  paste-ready / typeset), in-transcript find, show-reasoning / show-tools
+  toggles, and per-message and per-session copy.
 - **Export** (Markdown / HTML / JSON), **print**, a **light/dark theme**,
   and **keyboard navigation** (`/` search, `j`/`k` move, `Enter` open,
-  `f` find, `Esc` blur).
+  `f` find, `h` collapse header, `Esc` blur).
 
 Large transcripts open instantly because the app loads a session's header
 first and then pages messages in as you scroll, rather than transferring an
@@ -172,24 +199,28 @@ pre-fills a content search.
 
 You don't have to type a command every time. After `pip install ".[web]"`:
 
-- **Short commands** are on your `PATH`: `agentscroll-web` (a browser tab)
-  and `agentscroll-app` (a native window).
+- **Short commands** are on your `PATH`: `scrollback-web` (a browser tab)
+  and `scrollback-app` (a native window).
 - **A double-clickable launcher** is one command away:
 
   ```bash
-  agentscroll install-launcher              # drops a launcher on your Desktop
-  agentscroll install-launcher --app-bundle # macOS: also make an .app icon
+  scrollback install-launcher               # both: Desktop launcher + .app (macOS)
+  scrollback install-launcher --desktop     # only the Desktop launcher
+  scrollback install-launcher --app-bundle  # only the ~/Applications/.app (macOS)
   ```
 
-  This installs the launcher appropriate to your OS — `agentscroll.command`
-  on macOS (with `--app-bundle`, an `~/Applications/agentscroll.app` icon),
-  `agentscroll.bat` on Windows, and an application-menu entry plus
-  `agentscroll.sh` on Linux. Use `--dest <dir>` to place it elsewhere.
+  With no flags it installs everything for your OS; the two flags let you
+  pick just one. The Desktop launcher is `scrollback.command` on macOS,
+  `scrollback.bat` on Windows, and an application-menu entry plus
+  `scrollback.sh` on Linux. `--app-bundle` builds an
+  `~/Applications/scrollback.app` on macOS and falls back to the Desktop
+  launcher on other platforms (where there is no `.app`). Use `--dest <dir>`
+  to place artifacts elsewhere.
 
 The launchers open a **native window** via pywebview when it is available:
 no browser tab, no terminal, and **closing the window stops the server and
 frees the port**. On a system where pywebview cannot run (for example a
-headless Linux box without a GTK/Qt WebKit backend), agentscroll falls back
+headless Linux box without a GTK/Qt WebKit backend), scrollback falls back
 to a standalone browser window that auto-stops the server shortly after the
 window closes. All of this behaviour is decided in Python, so the launcher
 scripts stay free of OS-specific assumptions and ship inside the package
@@ -202,13 +233,13 @@ always correct, but its cost grows with the size of your history. For a
 large corpus, build an optional full-text index:
 
 ```bash
-agentscroll index            # one-time build; re-run to update (incremental)
-agentscroll index --stats    # show what's indexed
-agentscroll index --clear    # delete the index
+scrollback index            # one-time build; re-run to update (incremental)
+scrollback index --stats    # show what's indexed
+scrollback index --clear    # delete the index
 ```
 
 The index is a separate SQLite FTS5 database at
-`~/.cache/agentscroll/index.db` (override with `AGENTSCROLL_INDEX`). It is
+`~/.cache/scrollback/index.db` (override with `SCROLLBACK_INDEX`). It is
 derived and disposable: your source data is never modified, and deleting
 the index simply reverts to the lexical scan. Re-running `index` only
 re-processes new or changed sessions and prunes deleted ones; the web app
@@ -225,41 +256,41 @@ built without FTS5, `index` says so and search keeps working without it.
 | `opencode`   | SQLite (`session` / `message` / `part`), read-only         | `~/.local/share/opencode/opencode.db`  |
 | `claudecode` | per-project JSONL transcripts + nested subagent sidechains  | `~/.claude/projects/`                   |
 | `codex`      | per-session `rollout-*.jsonl` rollouts                      | `~/.codex/sessions/`                    |
-| `aider`      | per-project `.aider.chat.history.md` Markdown logs          | set `AGENTSCROLL_AIDER_DIRS` to opt in  |
+| `aider`      | per-project `.aider.chat.history.md` Markdown logs          | set `SCROLLBACK_AIDER_DIRS` to opt in  |
 
 More agents (Gemini CLI, Zed, VS Code Copilot Chat, GitHub Copilot CLI) are
 researched and queued — see [`ROADMAP.md`](ROADMAP.md).
 
 Adding another agent is a small, self-contained change: implement the
-`Source` interface in `src/agentscroll/sources/base.py` and register it in
-`src/agentscroll/sources/registry.py`. The CLI, search, export, web app,
+`Source` interface in `src/scrollback/sources/base.py` and register it in
+`src/scrollback/sources/registry.py`. The CLI, search, export, web app,
 and index all work against the common model automatically — see the
 opencode (SQLite) and Claude Code (JSONL) adapters as references, and
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for the conventions.
 
 ## Configuration
 
-agentscroll reads each agent's data from its default location, but you can
+scrollback reads each agent's data from its default location, but you can
 point it elsewhere, and you can control how the web server binds:
 
 | Variable                  | Purpose                                                      |
 |:--------------------------|:------------------------------------------------------------|
-| `AGENTSCROLL_OPENCODE_DB` | path to `opencode.db`                                       |
-| `AGENTSCROLL_CLAUDE_DIR`  | path to `~/.claude` or `~/.claude/projects`                |
-| `AGENTSCROLL_CODEX_DIR`   | path to `~/.codex` or `~/.codex/sessions`                  |
-| `AGENTSCROLL_AIDER_DIRS`  | colon-separated dirs to scan for Aider history (opt-in)     |
-| `AGENTSCROLL_PORT`        | web server port (default `8765`; or use `--port`)           |
-| `AGENTSCROLL_HOST`        | web server bind host (default `127.0.0.1`; or use `--host`) |
-| `AGENTSCROLL_INDEX`       | path to the search index database                          |
+| `SCROLLBACK_OPENCODE_DB` | path to `opencode.db`                                       |
+| `SCROLLBACK_CLAUDE_DIR`  | path to `~/.claude` or `~/.claude/projects`                |
+| `SCROLLBACK_CODEX_DIR`   | path to `~/.codex` or `~/.codex/sessions`                  |
+| `SCROLLBACK_AIDER_DIRS`  | colon-separated dirs to scan for Aider history (opt-in)     |
+| `SCROLLBACK_PORT`        | web server port (default `8765`; or use `--port`)           |
+| `SCROLLBACK_HOST`        | web server bind host (default `127.0.0.1`; or use `--host`) |
+| `SCROLLBACK_INDEX`       | path to the search index database                          |
 
 The web server defaults to `127.0.0.1`. If the chosen port is busy,
-agentscroll automatically picks the next free one (`--strict-port` fails
+scrollback automatically picks the next free one (`--strict-port` fails
 instead). Binding to a non-loopback host prints a warning, since the
 read-only API is unauthenticated.
 
 ## Safety
 
-agentscroll is read-only by design, and the design is enforced:
+scrollback is read-only by design, and the design is enforced:
 
 - The opencode SQLite database is opened with `mode=ro` — it is never
   created or written, and reads are safe against a live write-ahead log.

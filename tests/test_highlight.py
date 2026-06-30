@@ -1,6 +1,6 @@
-"""Tests for the dependency-free code highlighter (agentscroll.highlight)."""
+"""Tests for the dependency-free code highlighter (scrollback.highlight)."""
 
-from agentscroll import highlight
+from scrollback import highlight
 
 
 def test_python_keywords_and_numbers():

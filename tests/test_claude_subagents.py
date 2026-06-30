@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from agentscroll.sources.claudecode import ClaudeCodeSource
+from scrollback.sources.claudecode import ClaudeCodeSource
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:

@@ -1,13 +1,13 @@
-# Contributing to agentscroll
+# Contributing to scrollback
 
-Thanks for your interest. agentscroll is a small, local-first, read-only
+Thanks for your interest. scrollback is a small, local-first, read-only
 tool, and contributions that keep it that way are very welcome.
 
 ## Development setup
 
 ```bash
-git clone https://github.com/a-attia/agentscroll
-cd agentscroll
+git clone https://github.com/a-attia/scrollback
+cd scrollback
 python -m pip install -e ".[web,dev]"   # editable install + web + dev tools
 ```
 
@@ -27,7 +27,7 @@ runs against synthetic fixtures plus, where present, your real local data
 
 ## Project conventions
 
-- **Read-only, always.** Nothing in agentscroll may write to, lock for
+- **Read-only, always.** Nothing in scrollback may write to, lock for
   writing, or upload a user's agent data. The opencode SQLite DB is opened
   with `mode=ro`; JSONL files are read-only. Tests assert this invariant.
 - **Lightest tool that does the job.** Prefer the stdlib. New runtime
@@ -41,8 +41,8 @@ runs against synthetic fixtures plus, where present, your real local data
 
 ## Adding a new agent source
 
-Implement the `Source` interface in `src/agentscroll/sources/base.py` and
-register it in `src/agentscroll/sources/registry.py`. Everything else (CLI,
+Implement the `Source` interface in `src/scrollback/sources/base.py` and
+register it in `src/scrollback/sources/registry.py`. Everything else (CLI,
 search, export, web, index) works against the common model automatically.
 See `opencode.py` (SQLite) and `claudecode.py` (JSONL) as references.
 

@@ -5,7 +5,7 @@ from datetime import timezone
 
 import pytest
 
-from agentscroll.cli import (
+from scrollback.cli import (
     _fmt_cost,
     _fmt_tokens,
     _nonneg_int,

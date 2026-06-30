@@ -58,7 +58,9 @@ jobs:
           whl = sorted(glob.glob("dist/*.whl"))[-1]
           names = zipfile.ZipFile(whl).namelist()
           need = ["web/static/app.js", "web/static/vendor/marked.min.js",
-                  "launchers/agentscroll.command", "assets/icon.icns"]
+                  "web/static/vendor/katex/katex.min.js",
+                  "web/static/vendor/katex/fonts/KaTeX_Main-Regular.woff2",
+                  "launchers/scrollback.command", "assets/icon.icns"]
           missing = [n for n in need if not any(n in x for x in names)]
           assert not missing, f"wheel missing data files: {missing}"
           print("wheel OK:", whl.split('/')[-1])

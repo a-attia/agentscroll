@@ -1,10 +1,10 @@
-"""Tests for host/port resolution (agentscroll.serverconfig)."""
+"""Tests for host/port resolution (scrollback.serverconfig)."""
 
 import socket
 
 import pytest
 
-from agentscroll import serverconfig
+from scrollback import serverconfig
 
 
 def test_defaults():
@@ -13,19 +13,19 @@ def test_defaults():
 
 
 def test_default_host_env(monkeypatch):
-    monkeypatch.delenv("AGENTSCROLL_HOST", raising=False)
+    monkeypatch.delenv("SCROLLBACK_HOST", raising=False)
     assert serverconfig.default_host() == serverconfig.DEFAULT_HOST
-    monkeypatch.setenv("AGENTSCROLL_HOST", "0.0.0.0")
+    monkeypatch.setenv("SCROLLBACK_HOST", "0.0.0.0")
     assert serverconfig.default_host() == "0.0.0.0"
 
 
 def test_default_port_env(monkeypatch):
-    monkeypatch.delenv("AGENTSCROLL_PORT", raising=False)
+    monkeypatch.delenv("SCROLLBACK_PORT", raising=False)
     assert serverconfig.default_port() == serverconfig.DEFAULT_PORT
-    monkeypatch.setenv("AGENTSCROLL_PORT", "9999")
+    monkeypatch.setenv("SCROLLBACK_PORT", "9999")
     assert serverconfig.default_port() == 9999
     # invalid value falls back to the default
-    monkeypatch.setenv("AGENTSCROLL_PORT", "not-a-number")
+    monkeypatch.setenv("SCROLLBACK_PORT", "not-a-number")
     assert serverconfig.default_port() == serverconfig.DEFAULT_PORT
 
 

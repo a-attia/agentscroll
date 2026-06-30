@@ -7,8 +7,9 @@ build/
 dist/
 *.egg
 
-# Test / coverage
+# Test / coverage / lint
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 .tox/
@@ -24,7 +25,7 @@ env/
 .idea/
 .vscode/
 
-# agentscroll: never commit anyone's exported sessions
+# scrollback: never commit anyone's exported sessions
 *.session.md
 *.session.html
 *.session.json

@@ -1,10 +1,10 @@
-"""Tests for the stdlib-only Markdown renderer (agentscroll.minimd).
+"""Tests for the stdlib-only Markdown renderer (scrollback.minimd).
 
 Expected HTML values are derived by hand from the documented scope of the
 renderer (headings, lists, code, emphasis, links, blockquotes, rules).
 """
 
-from agentscroll import minimd
+from scrollback import minimd
 
 
 def test_headings():
@@ -74,3 +74,67 @@ def test_safety_raw_html_is_escaped():
     out = minimd.render("plain <b>x</b> & <i>y</i>")
     assert "&lt;b&gt;" in out and "&amp;" in out
     assert "<b>" not in out
+
+
+# -- math protection -------------------------------------------------------
+
+
+def test_math_inline_dollar_not_mangled():
+    # Underscores/carets/backslashes inside $...$ must survive verbatim, not
+    # be turned into emphasis or dropped.
+    out = minimd.render(r"energy is $E = mc^2$ and $a_i \cdot b_i$")
+    assert "$E = mc^2$" in out
+    assert r"$a_i \cdot b_i$" in out
+    assert "<em>" not in out  # the lone underscores must NOT become italics
+
+
+def test_math_display_dollar():
+    out = minimd.render(r"$$\nabla \cdot u = 0$$")
+    assert r"$$\nabla \cdot u = 0$$" in out
+
+
+def test_math_escaped_paren_and_bracket():
+    assert r"\(\alpha_1\)" in minimd.render(r"see \(\alpha_1\) here")
+    assert r"\[\int_0^1 x\,dx\]" in minimd.render(r"\[\int_0^1 x\,dx\]")
+
+
+def test_math_currency_is_not_treated_as_math():
+    # `$5 to $10` is prose, not math: emphasis/escaping must apply normally
+    # and no math span is formed.
+    out = minimd.render("it cost $5 to $10 today")
+    assert out == "<p>it cost $5 to $10 today</p>"
+
+
+def test_math_raw_mode_preserves_original_delimiters():
+    # raw mode (default) restores the exact source delimiters verbatim.
+    assert "$E$" in minimd.render(r"x $E$ y")
+    assert r"\(E\)" in minimd.render(r"x \(E\) y")
+
+
+def test_math_latex_mode_wraps_verbatim_source():
+    out = minimd.render(r"x $a_i$ y", math="latex")
+    assert '<code class="math-src">$a_i$</code>' in out
+
+
+def test_math_rendered_mode_emits_typeset_placeholder():
+    out = minimd.render(r"x $a_i$ y", math="rendered")
+    assert 'class="math-tex"' in out
+    assert 'data-display="false"' in out
+    assert "a_i" in out  # the body, escaped, for KaTeX to read
+    out_d = minimd.render(r"$$a_i$$", math="rendered")
+    assert 'data-display="true"' in out_d
+    assert "math-display" in out_d
+
+
+def test_math_body_is_html_escaped_in_rendered_mode():
+    # A `<` inside the math body must be escaped so it cannot inject HTML.
+    out = minimd.render(r"$a < b$", math="rendered")
+    assert "<span" in out  # our wrapper span
+    assert "a &lt; b" in out
+    assert "a < b" not in out
+
+
+def test_math_inside_code_span_is_left_alone():
+    # `$x$` inside an inline code span is code, not math.
+    out = minimd.render("`$x_i$`")
+    assert "<code>$x_i$</code>" in out

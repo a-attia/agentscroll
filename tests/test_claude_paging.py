@@ -8,8 +8,8 @@ file changes (cache invalidation by mtime+size).
 import json
 from pathlib import Path
 
-from agentscroll.sources import claudecode
-from agentscroll.sources.claudecode import ClaudeCodeSource
+from scrollback.sources import claudecode
+from scrollback.sources.claudecode import ClaudeCodeSource
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
