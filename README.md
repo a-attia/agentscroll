@@ -1,5 +1,7 @@
 # agentscroll
 
+[![CI](https://github.com/a-attia/agentscroll/actions/workflows/ci.yml/badge.svg)](https://github.com/a-attia/agentscroll/actions/workflows/ci.yml)
+
 Browse, search, copy, and export your AI coding-agent sessions from one
 local, read-only tool. agentscroll reads the conversation history that
 agents like **opencode** and **Claude Code** already keep on disk and gives
