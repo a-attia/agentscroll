@@ -6,6 +6,14 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-30
+
+### Fixed
+
+- README images now render on PyPI: use absolute, release-pinned PNG URLs
+  (PyPI does not resolve relative paths or display SVGs). Adds a PyPI-
+  friendly `cli.png` alongside the GitHub SVG.
+
 ## [0.1.0] - 2026-06-30
 
 The first release. scrollback reads AI coding-agent session history
@@ -82,5 +90,6 @@ export it from a CLI and a local web app.
 - Negative pagination arguments are rejected; clearer errors for unknown
   sources, failed exports, and unavailable data sources.
 
-[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/a-attia/scrollback/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/a-attia/scrollback/releases/tag/v0.1.0
