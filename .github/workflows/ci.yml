@@ -24,12 +24,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install (with web + dev extras)
+      - name: Install (dev extra)
         run: |
           python -m pip install --upgrade pip
-          # pywebview needs a GUI backend that isn't present on CI runners;
-          # install the web API deps directly rather than the full [web] extra.
-          python -m pip install -e ".[dev]" fastapi uvicorn
+          # The dev extra is self-sufficient for the full suite (fastapi +
+          # uvicorn + httpx for the web-API tests). pywebview is intentionally
+          # excluded -- it needs a GUI backend CI runners lack, and no test
+          # imports it.
+          python -m pip install -e ".[dev]"
 
       - name: Lint (ruff)
         run: ruff check src tests

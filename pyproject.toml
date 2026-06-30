@@ -47,7 +47,18 @@ dependencies = []
 web = ["fastapi>=0.110", "uvicorn>=0.29", "jinja2>=3.1", "pywebview>=5.0"]
 app = ["agentscroll[web]"]
 rich = ["rich>=13.0"]
-dev = ["pytest>=8.0", "ruff>=0.4", "rich>=13.0", "pywebview>=5.0"]
+# dev is self-sufficient for the full test suite: the web-API tests need
+# fastapi/uvicorn + an HTTP client for Starlette's TestClient (httpx), and
+# the colour-output tests need rich. pywebview is NOT included here -- it
+# needs a system GUI backend that CI runners lack, and no test imports it.
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "rich>=13.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+]
 
 [project.scripts]
 agentscroll = "agentscroll.cli:main"
