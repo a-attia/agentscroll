@@ -55,12 +55,16 @@ publish. To regenerate them after a UI change:
 ```bash
 pip install -e ".[screenshots]"
 playwright install chromium       # one-time headless-browser download
-python scripts/screenshots.py     # writes assets/screenshots/{cli.svg,web.png}
+python scripts/screenshots.py     # writes assets/screenshots/{cli.svg,cli.png,web.png}
 ```
 
-The CLI image is rendered with `rich` (no browser); the web image is
-captured with headless Chromium via Playwright. Neither the `screenshots`
-extra nor the browser is needed to run scrollback.
+The CLI image is rendered with `rich` (SVG for GitHub, plus a PNG for PyPI,
+which does not display SVGs); the web image is captured with headless
+Chromium via Playwright. The README embeds the PNGs via absolute,
+release-pinned `raw.githubusercontent.com` URLs so they render on both
+GitHub and PyPI (relative paths only work on GitHub). When cutting a new
+release, bump the version in those URLs. Neither the `screenshots` extra nor
+the browser is needed to run scrollback.
 
 ## Submitting changes
 

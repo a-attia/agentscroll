@@ -14,13 +14,13 @@ modifies, locks for writing, or uploads your data.
 You can use it two ways. From the **command line**, list, search, and export
 your sessions in a single scriptable tool:
 
-![scrollback listing recent sessions in the terminal.](assets/screenshots/cli.svg)
+![scrollback listing recent sessions in the terminal.](https://raw.githubusercontent.com/a-attia/scrollback/v0.1.0/assets/screenshots/cli.png)
 
 Or open the **local web app** to read a transcript in full — with rendered
 Markdown, syntax-highlighted code, and typeset LaTeX math:
 
 ![The scrollback web app showing a session list beside a transcript with
-rendered Markdown, highlighted code, and typeset equations.](assets/screenshots/web.png)
+rendered Markdown, highlighted code, and typeset equations.](https://raw.githubusercontent.com/a-attia/scrollback/v0.1.0/assets/screenshots/web.png)
 
 Both views read the same on-disk session stores, so you can jump between
 them freely. (The screenshots above use synthetic demo data.)

@@ -32,7 +32,12 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 # -- CLI screenshot (rich -> SVG, no browser) ----------------------------
 
-def render_cli_svg() -> Path:
+def render_cli() -> list[Path]:
+    """Render the CLI list to SVG (crisp on GitHub) and PNG (for PyPI).
+
+    PyPI's README renderer does not display SVG images, so a PNG is needed
+    there; GitHub renders both, and SVG stays sharp at any zoom.
+    """
     from rich.console import Console
     from rich.table import Table
     from rich.text import Text
@@ -66,10 +71,45 @@ def render_cli_svg() -> Path:
 
     console.print(Text("$ scrollback list --usage", style="bold green"))
     console.print(table)
-    out = OUT / "cli.svg"
-    console.save_svg(str(out), title="scrollback")
-    print(f"wrote {out}")
-    return out
+
+    # PyPI-friendly PNG first: rich's save_svg() clears the record buffer, so
+    # the HTML export must happen before we write the SVG.
+    png_path = OUT / "cli.png"
+    try:
+        _svg_html_to_png(console, png_path)
+        print(f"wrote {png_path}")
+    except Exception as exc:  # noqa: BLE001
+        print(f"cli.png skipped: {exc}", file=sys.stderr)
+
+    svg_path = OUT / "cli.svg"
+    console.save_svg(str(svg_path), title="scrollback")
+    print(f"wrote {svg_path}")
+    return [png_path, svg_path]
+
+
+def _svg_html_to_png(console, out: Path) -> None:
+    from playwright.sync_api import sync_playwright
+
+    # rich returns a full HTML document; give it a dark terminal-like page and
+    # screenshot the <pre> block (which carries the real content dimensions).
+    html = console.export_html(
+        inline_styles=True,
+        code_format=(
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            "<style>html,body{{margin:0}}"
+            "body{{background:#0d1117;display:inline-block;padding:22px 26px}}"
+            "pre{{margin:0;color:#c9d1d9;font:15px/1.5 Menlo,Consolas,monospace}}"
+            "</style></head>"
+            "<body><pre><code>{code}</code></pre></body></html>"
+        ),
+    )
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(device_scale_factor=2)
+        page.set_content(html, wait_until="load")
+        # The inline-block body wraps tightly around the terminal block.
+        page.query_selector("body").screenshot(path=str(out))
+        browser.close()
 
 
 # -- web screenshot (headless Chromium via Playwright) -------------------
@@ -132,7 +172,7 @@ def render_web_png() -> Path:
 
 
 def main() -> int:
-    render_cli_svg()
+    render_cli()
     try:
         render_web_png()
     except Exception as exc:  # noqa: BLE001
