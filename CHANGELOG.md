@@ -6,7 +6,7 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-06-30
+## [0.1.2] - 2026-06-30
 
 ### Added
 
@@ -15,6 +15,8 @@ follow [Semantic Versioning](https://semver.org/).
   confirmation prompt (`--yes` / `--dry-run`). It never touches agent data
   and never self-removes the package; it prints the right `pip`/`pipx
   uninstall` command instead.
+
+## [0.1.1] - 2026-06-30
 
 ### Fixed
 
@@ -98,6 +100,7 @@ export it from a CLI and a local web app.
 - Negative pagination arguments are rejected; clearer errors for unknown
   sources, failed exports, and unavailable data sources.
 
-[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/a-attia/scrollback/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/a-attia/scrollback/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/a-attia/scrollback/releases/tag/v0.1.0
