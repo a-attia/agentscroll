@@ -13,10 +13,14 @@ search, copy, and export it from a CLI and a local web app.
 ### Added
 
 - **CLI** (`agentscroll`): `sources`, `list`, `show`, `search`, `export`
-  (markdown / json / html / text), `copy`, `web`, `index`, `doctor`, and
-  `install-launcher`. Pluggable per-agent source adapters (opencode SQLite,
-  Claude Code JSONL), with Claude subagent sidechains folded under their
-  parent session.
+  (markdown / json / html / text), `copy`, `stats`, `resume`, `web`,
+  `index`, `doctor`, and `install-launcher`.
+- **Source adapters** (pluggable, read-only): opencode (SQLite), Claude Code
+  (JSONL, with subagent sidechains folded under their parent), Codex
+  (`rollout-*.jsonl`), and Aider (`.aider.chat.history.md`). More are queued
+  in `ROADMAP.md`.
+- `stats` aggregates session/message/token/cost totals plus top projects;
+  `resume` prints the native command to continue a session in its own agent.
 - Listing filters: `--source`, `--dir`, `--query`, `--since` / `--until`,
   pagination (`--offset` / `--page`), usage columns (`--usage`), and
   subagent folding (on by default; `--no-fold`). Optional coloured output

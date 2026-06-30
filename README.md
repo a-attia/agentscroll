@@ -122,6 +122,19 @@ faithful structured dump with bulky raw blobs stripped for readability.
 Exported HTML and Markdown render the assistant's Markdown with syntax-
 highlighted code, and the HTML is a self-contained file that prints well.
 
+### Stats and resume
+
+```bash
+agentscroll stats                          # totals, by-source + top projects
+agentscroll resume latest                  # print the native resume command
+agentscroll resume <selector> --copy       # ...and copy it to the clipboard
+```
+
+`stats` aggregates session counts, message/token/cost totals, and your
+busiest projects. `resume` prints the command to continue a session in its
+own agent (for example `opencode --session <id>` or `claude --resume <id>`),
+with a `cd` into the session's project directory.
+
 ## The web app
 
 `agentscroll web` starts a local, read-only browser UI — FastAPI plus a
@@ -205,10 +218,15 @@ built without FTS5, `index` says so and search keeps working without it.
 
 ## Supported sources
 
-| Source       | Reads                                                        | Default location                          |
-|:-------------|:------------------------------------------------------------|:------------------------------------------|
-| `opencode`   | SQLite (`session` / `message` / `part`), read-only          | `~/.local/share/opencode/opencode.db`     |
-| `claudecode` | per-project JSONL transcripts + nested subagent sidechains   | `~/.claude/projects/`                      |
+| Source       | Reads                                                       | Default location                       |
+|:-------------|:-----------------------------------------------------------|:---------------------------------------|
+| `opencode`   | SQLite (`session` / `message` / `part`), read-only         | `~/.local/share/opencode/opencode.db`  |
+| `claudecode` | per-project JSONL transcripts + nested subagent sidechains  | `~/.claude/projects/`                   |
+| `codex`      | per-session `rollout-*.jsonl` rollouts                      | `~/.codex/sessions/`                    |
+| `aider`      | per-project `.aider.chat.history.md` Markdown logs          | searched from the working directory     |
+
+More agents (Gemini CLI, Zed, VS Code Copilot Chat, GitHub Copilot CLI) are
+researched and queued — see [`ROADMAP.md`](ROADMAP.md).
 
 Adding another agent is a small, self-contained change: implement the
 `Source` interface in `src/agentscroll/sources/base.py` and register it in
