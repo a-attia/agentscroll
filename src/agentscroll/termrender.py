@@ -108,7 +108,6 @@ def render_search(hits: list[SearchHit], query: str) -> None:
             head.append(f" {h.part.tool_name}", style="cyan")
         console.print(head)
         snippet = Text(h.snippet, style="dim")
-        snippet.highlight_words([query], "black on yellow") if False else None
         # Manual highlight of all case-insensitive matches.
         low = h.snippet.lower()
         start = 0

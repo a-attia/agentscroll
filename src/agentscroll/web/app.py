@@ -94,6 +94,20 @@ def create_app(
     _store = store if store is not None else Store()
     _install_host_guard(app, allowed_hosts)
 
+    # Translate unexpected source/IO failures (locked/corrupt DB, unreadable
+    # files) into a clean 503 instead of a leaked 500 + traceback.
+    import sqlite3
+
+    from fastapi.responses import JSONResponse
+
+    @app.exception_handler(sqlite3.Error)
+    async def _sqlite_error(_request, exc):  # pragma: no cover - error path
+        return JSONResponse(status_code=503, content={"detail": "data source unavailable"})
+
+    @app.exception_handler(OSError)
+    async def _os_error(_request, exc):  # pragma: no cover - error path
+        return JSONResponse(status_code=503, content={"detail": "data source unavailable"})
+
     watchdog_on = idle_timeout > 0 and on_idle is not None
     if watchdog_on:
         _install_heartbeat_watchdog(app, on_idle, idle_timeout)

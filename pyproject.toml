@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentscroll"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Navigate, search, copy, and export your AI coding-agent sessions (opencode, Claude Code, ...) from one local, read-only tool."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,9 +22,16 @@ keywords = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
+    "Environment :: Web Environment",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
     "Topic :: Utilities",
 ]
 # Zero required runtime dependencies: the CLI core uses only the stdlib
@@ -53,6 +60,9 @@ agentscroll-app = "agentscroll.cli:main_app"
 Homepage = "https://github.com/attia/agentscroll"
 Repository = "https://github.com/attia/agentscroll"
 Issues = "https://github.com/attia/agentscroll/issues"
+
+[tool.hatch.version]
+path = "src/agentscroll/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentscroll"]

@@ -34,6 +34,31 @@ def _child_id(parent_id: str, agent_stem: str) -> str:
     return f"{parent_id}{_CHILD_SEP}{agent_stem}"
 
 
+# Cache for _scan_metadata results, keyed by (path, mtime_ns, size). The same
+# transcript is scanned by list_sessions, then again when a session is loaded
+# or searched; caching on the file's mtime+size avoids repeated full-file scans
+# while staying correct (any change to the file invalidates the entry).
+_META_CACHE: dict[str, tuple[tuple[float, int], dict[str, Any] | None]] = {}
+_META_CACHE_MAX = 4096
+
+
+def _cached_scan_metadata(path: Path) -> dict[str, Any] | None:
+    try:
+        st = path.stat()
+        sig = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+    key = str(path)
+    hit = _META_CACHE.get(key)
+    if hit is not None and hit[0] == sig:
+        return hit[1]
+    result = _scan_metadata(path)
+    if len(_META_CACHE) >= _META_CACHE_MAX:
+        _META_CACHE.clear()  # simple bound; correctness over LRU sophistication
+    _META_CACHE[key] = (sig, result)
+    return result
+
+
 def _read_meta_json(sub_path: Path) -> dict[str, Any]:
     """Read the sibling `<agent>.meta.json` (agentType, description)."""
     meta_path = sub_path.with_suffix(".meta.json")
@@ -100,7 +125,7 @@ class ClaudeCodeSource(Source):
 
     def _list_sessions(self) -> Iterator[Session]:
         for f in self._session_files():
-            meta = _scan_metadata(f)
+            meta = _cached_scan_metadata(f)
             if meta is None:
                 continue
             children = tuple(
@@ -130,7 +155,7 @@ class ClaudeCodeSource(Source):
         agent_type = info.get("agentType")
         if agent_type:
             title = f"{title} (@{agent_type})"
-        sm = _scan_metadata(sub_path)
+        sm = _cached_scan_metadata(sub_path)
         return Session(
             id=_child_id(parent_id, agent_id),
             source=self.name,
@@ -212,7 +237,7 @@ class ClaudeCodeSource(Source):
         path = self._find_path(session_id)
         if path is None:
             return None
-        meta = _scan_metadata(path)
+        meta = _cached_scan_metadata(path)
         if meta is None:
             return None
         ovr = self._child_override(session_id, path) if _CHILD_SEP in session_id else {}
@@ -403,7 +428,7 @@ def _parse_session(
     path: Path, source_name: str, *, override: dict[str, Any] | None = None
 ) -> Session:
     override = override or {}
-    meta = _scan_metadata(path) or {
+    meta = _cached_scan_metadata(path) or {
         "session_id": path.stem,
         "cwd": None,
         "git_branch": None,
