@@ -1,252 +1,267 @@
 # agentscroll
 
-Navigate, search, copy, and export your AI coding-agent sessions from one
-local, read-only tool.
+Browse, search, copy, and export your AI coding-agent sessions from one
+local, read-only tool. agentscroll reads the conversation history that
+agents like **opencode** and **Claude Code** already keep on disk and gives
+you a single, consistent view across them — from a scriptable command line
+or a local web app.
 
-`agentscroll` reads the session history that AI coding agents already keep
-on disk — **opencode** (SQLite) and **Claude Code** (JSONL) today, more via
-pluggable adapters — and lets you list, view, search, export, and copy
-those conversations from the command line. Everything is local-first and
-strictly **read-only**: it never modifies, locks for writing, or uploads
-your data.
+Everything is local-first and strictly **read-only**: agentscroll never
+modifies, locks for writing, or uploads your data.
 
-## Why
+> **For AI agents:** read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
+> project conventions. This README is for human readers.
 
-AI agents persist rich session data locally, but each in its own format
-and with no good way to browse or take that history with you.
-`agentscroll` gives you one consistent, scriptable view across agents:
+[![CI](https://github.com/a-attia/agentscroll/actions/workflows/ci.yml/badge.svg)](https://github.com/a-attia/agentscroll/actions/workflows/ci.yml)
+
+## Contents
+
+- [Why agentscroll](#why-agentscroll)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [The command line](#the-command-line)
+- [The web app](#the-web-app)
+- [Running it as an app](#running-it-as-an-app)
+- [Fast search (optional index)](#fast-search-optional-index)
+- [Supported sources](#supported-sources)
+- [Configuration](#configuration)
+- [Safety](#safety)
+- [Development](#development)
+- [License](#license)
+
+## Why agentscroll
+
+AI coding agents persist rich session data locally, but each in its own
+format and with no convenient way to browse that history or take it with
+you. agentscroll fills that gap with four things:
 
 - **See** any past conversation as a readable transcript.
-- **Search** across every session by keyword.
+- **Search** across every session by keyword (title or full text).
 - **Export** a session to Markdown, JSON, HTML, or plain text.
-- **Copy** a rendered session straight to your clipboard.
+- **Copy** a message or a whole session straight to your clipboard.
 
-Compared to existing tools, the niche here is: Python, **CLI-first**
-(with a web app planned), **multi-client**, **direct read-only** access to
-the live stores (no sync step, no plugins, no upload), and first-class
-**export/copy**.
+Its niche among similar tools: pure Python, works equally from the
+**CLI and a web UI**, reads **multiple agents** directly from their live
+on-disk stores (no sync step, no plugins, no upload), and treats
+**export and copy** as first-class.
 
 ## Install
 
 ```bash
-pip install -e .            # from a local clone (editable)
-# or, once published:
-# pip install agentscroll
+pip install -e ".[web]"     # from a local clone: CLI + web app
 ```
 
-Requires Python 3.10+. The CLI core has **zero runtime dependencies**
-(stdlib only). The optional web app needs extras: `pip install -e ".[web]"`.
+agentscroll is not yet published to PyPI; install from a clone for now.
+Requires Python 3.10+. The bare CLI has **no runtime dependencies**
+(standard library only); optional features come from extras:
 
-## Usage
+- `".[web]"` — the local web app (FastAPI, uvicorn) and the native app
+  window (pywebview).
+- `".[rich]"` — coloured terminal output.
+- `".[dev]"` — test and lint tooling.
+
+## Quick start
 
 ```bash
-agentscroll sources                       # which agents are detected
-agentscroll list                          # recent sessions, newest first
-agentscroll list --source opencode -n 10  # only opencode, 10 rows
-agentscroll list --dir myproject          # filter by directory substring
-agentscroll list -q "refactor"            # filter by title substring
-agentscroll list --since 2026-06-01       # date range (YYYY-MM-DD or ISO)
-agentscroll list --until 2026-06-30
-agentscroll list --usage                  # show cost + token (in/out) columns
-agentscroll list --no-fold                # don't nest subagents under parents
-agentscroll list -n 20 --page 2           # pagination (page size = --limit)
-agentscroll list --plain                  # disable colour (auto-off when piped)
+agentscroll doctor          # what was detected on this machine?
+agentscroll list            # recent sessions, newest first
+agentscroll show latest     # print the most recent transcript
+agentscroll web             # open the browser UI
+```
 
-agentscroll show latest                   # print the most recent transcript
-agentscroll show ses_0eae9810 --reasoning # include reasoning blocks
-agentscroll show <id> --no-tools          # hide tool calls/outputs
+`agentscroll doctor` is the best first command: it reports which agents
+were found, how many sessions each has, and which optional features are
+available.
 
-agentscroll search "merge conflict"       # search across all sessions
+## The command line
+
+The CLI is organised around a few verbs. Commands that operate on a single
+session accept a **selector**: a full id, a unique prefix, a
+source-qualified id (`opencode:ses_0eae9810`), or the keyword `latest`.
+
+### Listing and viewing
+
+```bash
+agentscroll list --source opencode -n 10   # one source, 10 rows
+agentscroll list --dir myproject           # filter by directory substring
+agentscroll list -q "refactor"             # filter by title substring
+agentscroll list --since 2026-06-01 --until 2026-06-30   # date range
+agentscroll list --usage                   # add cost + token (in/out) columns
+agentscroll list -n 20 --page 2            # pagination (page size = --limit)
+
+agentscroll show latest --reasoning        # include the model's thinking
+agentscroll show <selector> --no-tools     # hide tool calls and output
+```
+
+By default, subagent sessions (for example opencode `@explore` subagents)
+are **folded** under their parent; pass `--no-fold` to list them flat.
+Output is coloured when the `rich` extra is installed and the output is a
+terminal; piping, or `--plain`, falls back to plain text.
+
+### Searching
+
+```bash
+agentscroll search "merge conflict"        # full-text across all sessions
 agentscroll search "ssh" --source opencode --json
-
-agentscroll index                         # build/update the fast search index
-agentscroll index --stats                 # show index size
-agentscroll index --clear                 # delete it
-
-agentscroll export latest -f markdown -o session.md
-agentscroll export <id> -f html -o session.html
-agentscroll export <id> -f json           # to stdout
-
-agentscroll copy latest -f markdown       # copy to clipboard
-
-agentscroll web                           # launch the local web app (opens a tab)
-agentscroll web --window                  # open in a standalone browser window
-agentscroll web -p 9000 --no-browser      # custom port, don't auto-open
-agentscroll web --app                     # native desktop window (needs [app] extra)
 ```
 
-### Web app
+Search scans message text across sessions. On a large history you can make
+it near-instant with an [optional index](#fast-search-optional-index).
 
-`agentscroll web` starts a local, read-only browser UI (FastAPI + a
-small vanilla-JS frontend, no build step) bound to `127.0.0.1` by default.
-
-Features:
-
-- **Session list** with clear source filter chips, date filters
-  (since / until), and a **home** button (reset everything); loads
-  incrementally with **infinite scroll**.
-- **Explicit search scope**: a `titles | contents` toggle next to the
-  search box. Search session titles, message contents, or both at once
-  (combined results are grouped into "title matches" and "content
-  matches").
-- **Subagents** are collapsed under their parent and expand on demand.
-  For Claude Code this includes the per-session **sidechain transcripts**
-  (`<session>/subagents/agent-*.jsonl`), titled from each subagent's
-  `agentType` + description.
-- **Markdown rendering with syntax highlighting** for assistant/user text
-  (vendored `marked` + `highlight.js`, no CDN, served locally).
-- **Content search** across all sessions (highlighted snippets);
-  clicking a hit opens the session at the matching message.
-- **Transcript reader** that loads **lazily in windows** so even very
-  large sessions (tens of thousands of messages) open instantly without
-  freezing; more messages load as you scroll.
-- **Find in transcript** (highlight + next/prev), `reasoning` / `tools`
-  toggles, token/branch/model metadata, copy-session-id.
-- **Export** (Markdown / HTML / JSON) and **copy to clipboard** per
-  session.
-- **Light / dark theme** (follows the system, with a manual toggle).
-- **Keyboard navigation**: `/` focus search, `j` / `k` move through the
-  list, `Enter` open, `f` find-in-transcript, `Esc` blur.
-
-Deep links: the open session is reflected in the URL hash
-(`#opencode/<id>`), and `?q=<text>` pre-fills a content search.
-
-Install the web extra first: `pip install -e ".[web]"`. (The web extra
-includes `pywebview`, which provides the native app window below.)
-
-#### Launching without the terminal
-
-You don't have to type the full command every time. After
-`pip install "agentscroll[web]"` you have several options:
-
-- **Short commands on PATH** (installed by pip):
-  - `agentscroll-web` -- same as `agentscroll web`
-  - `agentscroll-app` -- same as `agentscroll web --app`
-- **A double-clickable launcher**: run `agentscroll install-launcher`
-  once. It drops the OS-appropriate launcher on your Desktop:
-  - macOS: `agentscroll.command`. Add `--app-bundle` to also create
-    `~/Applications/agentscroll.app` (an app icon you can double-click or
-    pin to the Dock -- this runs as a GUI app, with **no terminal**).
-  - Windows: `agentscroll.bat`.
-  - Linux: installs `agentscroll.desktop` into your application menu and
-    drops `agentscroll.sh` on the Desktop.
-  Use `--dest <dir>` to place it somewhere else.
-
-**Window behaviour and clean shutdown.** The launchers run
-`agentscroll web --app`, which:
-
-- opens a **true native window** via `pywebview` (no browser tab, no
-  terminal); **closing the window stops the server and frees the port**.
-- if `pywebview` isn't usable (e.g. a headless Linux box without a GTK/Qt
-  WebKit backend), it falls back to a **standalone browser window** with a
-  **heartbeat**: the page pings the server, and when the window closes the
-  server auto-stops (~10s later) so the port is freed without Ctrl-C.
-
-This is all decided in Python (`webopen.py` / `serverconfig.py`); no
-OS-specific browser paths are baked into the launcher scripts. It keeps
-agentscroll platform-agnostic (no per-OS native binary to maintain), and
-the launcher templates ship inside the package so they work for
-`pip install` users, not just source checkouts.
-
-### Fast search (optional index)
-
-By default, search is a lexical scan over the live data: zero setup, always
-correct, but `O(corpus)` per query. For a large history you can build an
-optional **full-text index** for near-instant search:
+### Exporting and copying
 
 ```bash
-agentscroll index          # one-time build (re-run to update; it's incremental)
+agentscroll export latest -f markdown -o session.md
+agentscroll export <selector> -f html -o session.html
+agentscroll export <selector> -f json      # to stdout
+agentscroll copy latest -f markdown        # render and copy to the clipboard
 ```
 
-This creates a separate SQLite FTS5 database at
+The formats are `markdown` (`md`), `json`, `html`, and `text` (`txt`).
+Markdown, HTML, and text honour `--reasoning` (include the model's
+thinking) and `--no-tools` (omit tool calls and their output); JSON is a
+faithful structured dump with bulky raw blobs stripped for readability.
+Exported HTML and Markdown render the assistant's Markdown with syntax-
+highlighted code, and the HTML is a self-contained file that prints well.
+
+## The web app
+
+`agentscroll web` starts a local, read-only browser UI — FastAPI plus a
+small vanilla-JavaScript frontend with no build step — bound to
+`127.0.0.1`. Open it with `agentscroll web` (a browser tab),
+`agentscroll web --window` (a standalone browser window), or
+`agentscroll web --app` (a native desktop window; see
+[Running it as an app](#running-it-as-an-app)).
+
+What it offers:
+
+- A **session list** with source-filter chips, date filters, and a
+  **home** button to reset everything; it loads incrementally as you
+  scroll.
+- An explicit **search scope** toggle — search session **titles**, message
+  **contents**, or both at once (combined results are grouped).
+- **Subagents** collapsed under their parent, expandable on demand
+  (including Claude Code's nested sidechain transcripts).
+- A **transcript reader** with a frozen header and a scrolling message
+  body, **Markdown rendering with syntax highlighting**, in-transcript
+  find, reasoning/tools toggles, and per-message and per-session copy.
+- **Export** (Markdown / HTML / JSON), **print**, a **light/dark theme**,
+  and **keyboard navigation** (`/` search, `j`/`k` move, `Enter` open,
+  `f` find, `Esc` blur).
+
+Large transcripts open instantly because the app loads a session's header
+first and then pages messages in as you scroll, rather than transferring an
+entire multi-megabyte transcript at once. Deep links work too: the open
+session is reflected in the URL hash (`#opencode/<id>`), and `?q=<text>`
+pre-fills a content search.
+
+## Running it as an app
+
+You don't have to type a command every time. After `pip install ".[web]"`:
+
+- **Short commands** are on your `PATH`: `agentscroll-web` (a browser tab)
+  and `agentscroll-app` (a native window).
+- **A double-clickable launcher** is one command away:
+
+  ```bash
+  agentscroll install-launcher              # drops a launcher on your Desktop
+  agentscroll install-launcher --app-bundle # macOS: also make an .app icon
+  ```
+
+  This installs the launcher appropriate to your OS — `agentscroll.command`
+  on macOS (with `--app-bundle`, an `~/Applications/agentscroll.app` icon),
+  `agentscroll.bat` on Windows, and an application-menu entry plus
+  `agentscroll.sh` on Linux. Use `--dest <dir>` to place it elsewhere.
+
+The launchers open a **native window** via pywebview when it is available:
+no browser tab, no terminal, and **closing the window stops the server and
+frees the port**. On a system where pywebview cannot run (for example a
+headless Linux box without a GTK/Qt WebKit backend), agentscroll falls back
+to a standalone browser window that auto-stops the server shortly after the
+window closes. All of this behaviour is decided in Python, so the launcher
+scripts stay free of OS-specific assumptions and ship inside the package
+for `pip install` users.
+
+## Fast search (optional index)
+
+By default, search is a lexical scan over your live data: zero setup,
+always correct, but its cost grows with the size of your history. For a
+large corpus, build an optional full-text index:
+
+```bash
+agentscroll index            # one-time build; re-run to update (incremental)
+agentscroll index --stats    # show what's indexed
+agentscroll index --clear    # delete the index
+```
+
+The index is a separate SQLite FTS5 database at
 `~/.cache/agentscroll/index.db` (override with `AGENTSCROLL_INDEX`). It is
-**derived and disposable** -- the source data is never modified, and
-deleting the index just reverts to the lexical scan. Re-running `index`
-only re-processes new/changed sessions and prunes deleted ones.
+derived and disposable: your source data is never modified, and deleting
+the index simply reverts to the lexical scan. Re-running `index` only
+re-processes new or changed sessions and prunes deleted ones; the web app
+also refreshes it in the background on startup when it is stale.
 
-Once built, both the CLI and the web app use it automatically (raw queries
-drop from ~1s to a few milliseconds). If your Python's SQLite lacks FTS5,
-`index` says so and search keeps working without it.
+Once built, both the CLI and the web app use it automatically, turning a
+multi-second query into a few milliseconds. If your Python's SQLite was
+built without FTS5, `index` says so and search keeps working without it.
 
-#### Choosing the port
+## Supported sources
 
-The server uses port `8765` by default. Override it with `--port`, or set
-`AGENTSCROLL_PORT` (and `AGENTSCROLL_HOST`) -- handy for launchers, which
-take no arguments. If the chosen port is busy, agentscroll automatically
-picks the next free one (use `--strict-port` to fail instead).
+| Source       | Reads                                                        | Default location                          |
+|:-------------|:------------------------------------------------------------|:------------------------------------------|
+| `opencode`   | SQLite (`session` / `message` / `part`), read-only          | `~/.local/share/opencode/opencode.db`     |
+| `claudecode` | per-project JSONL transcripts + nested subagent sidechains   | `~/.claude/projects/`                      |
 
-#### How huge sessions stay fast
+Adding another agent is a small, self-contained change: implement the
+`Source` interface in `src/agentscroll/sources/base.py` and register it in
+`src/agentscroll/sources/registry.py`. The CLI, search, export, web app,
+and index all work against the common model automatically — see the
+opencode (SQLite) and Claude Code (JSONL) adapters as references, and
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the conventions.
 
-The web API separates a cheap **metadata** endpoint
-(`/api/sessions/{source}/{id}/meta`) from a **windowed messages**
-endpoint (`/api/sessions/{source}/{id}/messages?offset&limit`). The
-frontend fetches the header first, then pages messages in as you scroll,
-so the browser never receives or renders an entire multi-megabyte
-transcript at once.
+## Configuration
 
-### Selectors
+agentscroll reads each agent's data from its default location, but you can
+point it elsewhere, and you can control how the web server binds:
 
-Commands that take a session accept any of:
+| Variable                  | Purpose                                                      |
+|:--------------------------|:------------------------------------------------------------|
+| `AGENTSCROLL_OPENCODE_DB` | path to `opencode.db`                                       |
+| `AGENTSCROLL_CLAUDE_DIR`  | path to `~/.claude` or `~/.claude/projects`                |
+| `AGENTSCROLL_PORT`        | web server port (default `8765`; or use `--port`)           |
+| `AGENTSCROLL_HOST`        | web server bind host (default `127.0.0.1`; or use `--host`) |
+| `AGENTSCROLL_INDEX`       | path to the search index database                          |
 
-- a full id (`ses_0eae98104ffe...` or a Claude UUID),
-- a unique prefix (`ses_0eae9810`),
-- a source-qualified id (`opencode:ses_0eae9810`),
-- the keyword `latest`.
-
-### Output formats
-
-`markdown` (`md`), `json`, `html`, `text` (`txt`). Markdown/HTML/text
-support `--reasoning` (include the model's thinking) and `--no-tools`
-(omit tool calls and their output). JSON is a faithful structured dump
-(with bulky raw blobs stripped for readability).
-
-### Subagents, usage, and colour
-
-- **Subagent folding** (default on for `list`): sessions spawned by
-  another (opencode `parent_id`; e.g. `@explore` subagents) are nested
-  under their parent. Use `--no-fold` to list them flat.
-- **Usage columns** (`--usage`): show cost and `tokens in/out`. (opencode
-  tracks these; input is dominated by cache reads. Cost may be `$0` when
-  your provider does not report it.)
-- **Colour**: `list`, `search`, and `show` render with colour when the
-  optional `rich` package is installed and output is a terminal; piping
-  or `--plain` falls back to plain text. Install with
-  `pip install -e ".[rich]"`.
-
-## Sources
-
-| Source | Reads | Location (default) |
-|---|---|---|
-| `opencode` | SQLite (`session`/`message`/`part`), read-only `mode=ro` | `~/.local/share/opencode/opencode.db` |
-| `claudecode` | per-project JSONL transcripts + nested subagent sidechains | `~/.claude/projects/` |
-
-Override locations with environment variables:
-
-- `AGENTSCROLL_OPENCODE_DB` — path to `opencode.db`
-- `AGENTSCROLL_CLAUDE_DIR` — path to `~/.claude` or `~/.claude/projects`
-
-## Adding a new agent
-
-Implement the `Source` interface in
-`src/agentscroll/sources/base.py` and register the class in
-`src/agentscroll/sources/registry.py`. Nothing else needs to change —
-the CLI, search, and export all work against the common model.
+The web server defaults to `127.0.0.1`. If the chosen port is busy,
+agentscroll automatically picks the next free one (`--strict-port` fails
+instead). Binding to a non-loopback host prints a warning, since the
+read-only API is unauthenticated.
 
 ## Safety
 
-- Opens the opencode database with SQLite `mode=ro` (never creates, never
-  writes, safe against a live WAL).
-- Reads Claude Code JSONL files read-only.
-- A test asserts the opencode DB's modification time is unchanged across
-  reads (`tests/test_sources_live.py`).
+agentscroll is read-only by design, and the design is enforced:
+
+- The opencode SQLite database is opened with `mode=ro` — it is never
+  created or written, and reads are safe against a live write-ahead log.
+- Claude Code JSONL files are read as read-only.
+- A test asserts the opencode database's modification time is unchanged
+  across reads (`tests/test_sources_live.py`).
+- The web app binds to localhost, rejects unexpected `Host` headers (a
+  DNS-rebinding guard), and sanitizes rendered transcript content.
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest -q
+pip install -e ".[web,dev]"
+pytest -q             # tests
+ruff check src tests  # lint
 ```
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for project conventions (the
+read-only invariant, stdlib-first dependencies, platform-agnostic code,
+and how to add a new agent source) and [`CHANGELOG.md`](CHANGELOG.md) for
+what has landed so far.
 
 ## License
 
-MIT.
+MIT — see [`LICENSE`](LICENSE).
