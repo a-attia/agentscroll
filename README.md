@@ -12,8 +12,6 @@ modifies, locks for writing, or uploads your data.
 > **For AI agents:** read [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
 > project conventions. This README is for human readers.
 
-[![CI](https://github.com/a-attia/agentscroll/actions/workflows/ci.yml/badge.svg)](https://github.com/a-attia/agentscroll/actions/workflows/ci.yml)
-
 ## Contents
 
 - [Why agentscroll](#why-agentscroll)
