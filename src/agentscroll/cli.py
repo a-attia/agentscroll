@@ -637,6 +637,79 @@ def _brand_macos_app() -> None:
             pass
 
 
+# Keep a reference so the Objective-C handler isn't garbage-collected while the
+# menu item points at it.
+_about_handler = None
+
+
+def _install_macos_about_link() -> None:
+    """Re-point the standard 'About' menu item to a panel that includes a
+    clickable link to the project repo.
+
+    Runs after the Cocoa menu exists (via webview.start(func=...)). Replaces
+    the About item's action with one that calls
+    orderFrontStandardAboutPanelWithOptions: and passes a Credits attributed
+    string containing a real hyperlink.
+    """
+    global _about_handler
+    if sys.platform != "darwin":
+        return
+    try:
+        from AppKit import (  # type: ignore
+            NSApplication,
+            NSAttributedString,
+            NSFont,
+            NSFontAttributeName,
+        )
+        from Foundation import NSObject, NSURL  # type: ignore
+
+        from . import __version__
+
+        repo = "https://github.com/a-attia/agentscroll"
+        credits = NSAttributedString.alloc().initWithString_attributes_(
+            "Navigate, search, copy, and export your AI coding-agent sessions.\n"
+            "Local-first and read-only.\n\n",
+            {NSFontAttributeName: NSFont.systemFontOfSize_(11)},
+        )
+        link = NSAttributedString.alloc().initWithString_attributes_(
+            repo,
+            {
+                "NSLink": NSURL.URLWithString_(repo),
+                NSFontAttributeName: NSFont.systemFontOfSize_(11),
+            },
+        )
+        full = credits.mutableCopy()
+        full.appendAttributedString_(link)
+
+        class _AboutHandler(NSObject):
+            def showAbout_(self, _sender):
+                opts = {
+                    "Credits": full,
+                    "ApplicationName": "agentscroll",
+                    "Version": __version__,
+                    "ApplicationVersion": __version__,
+                }
+                NSApplication.sharedApplication().orderFrontStandardAboutPanelWithOptions_(opts)
+
+        _about_handler = _AboutHandler.alloc().init()
+
+        # Find the About item in the app menu (first menu) and rewire it.
+        app = NSApplication.sharedApplication()
+        main_menu = app.mainMenu()
+        if main_menu is None or main_menu.numberOfItems() == 0:
+            return
+        app_menu = main_menu.itemAtIndex_(0).submenu()
+        for i in range(app_menu.numberOfItems()):
+            item = app_menu.itemAtIndex_(i)
+            action = item.action()
+            if action is not None and str(action) == "orderFrontStandardAboutPanel:":
+                item.setTarget_(_about_handler)
+                item.setAction_(b"showAbout:")
+                break
+    except Exception:
+        pass  # best-effort; the plain About still works
+
+
 def _open_tab(url: str) -> str:
     import webbrowser
 
@@ -747,7 +820,9 @@ def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     start_kwargs: dict[str, object] = {}
     if icon:
         start_kwargs["icon"] = icon
-    webview.start(**start_kwargs)  # blocks until the window is closed
+    # Run once the Cocoa menu exists to add a clickable repo link to the
+    # standard About panel (macOS only; no-op elsewhere).
+    webview.start(_install_macos_about_link, **start_kwargs)  # blocks until window closed
     # Window closed: stop the server and wait for the port to be released so
     # an immediate relaunch can reuse it.
     server.should_exit = True
