@@ -64,6 +64,10 @@ class IndexHit:
 
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 CREATE TABLE IF NOT EXISTS synced (
     source TEXT NOT NULL,
     session_id TEXT NOT NULL,
@@ -149,8 +153,38 @@ class FtsIndex:
             for key in set(have) - live_keys:
                 self._drop_session(conn, *key)
                 stats["removed"] += 1
+            # Record a sync marker: the newest source mtime we've indexed, so
+            # staleness can be checked cheaply later without re-listing.
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('source_mtime', ?)",
+                (str(_max_source_mtime(store)),),
+            )
             conn.commit()
         return stats
+
+    def is_stale(self, store) -> bool:
+        """Cheap staleness check: True if any source file is newer than the
+        newest mtime recorded at the last sync.
+
+        Compares filesystem mtimes only (no full session enumeration), so it
+        is fast enough to call before a search.
+        """
+        if not self.exists():
+            return False
+        try:
+            with self._connect(write=False) as conn:
+                row = conn.execute(
+                    "SELECT value FROM meta WHERE key = 'source_mtime'"
+                ).fetchone()
+        except sqlite3.Error:
+            return False
+        if row is None or row[0] is None:
+            return True  # old index without a marker -> treat as stale
+        try:
+            recorded = float(row[0])
+        except (TypeError, ValueError):
+            return True
+        return _max_source_mtime(store) > recorded + 1.0  # 1s slack
 
     def _drop_session(self, conn: sqlite3.Connection, source: str, sid: str) -> None:
         conn.execute("DELETE FROM parts WHERE source = ? AND session_id = ?", (source, sid))
@@ -225,6 +259,31 @@ class FtsIndex:
             sessions = conn.execute("SELECT COUNT(*) FROM synced").fetchone()[0]
             parts = conn.execute("SELECT COUNT(*) FROM parts").fetchone()[0]
         return {"sessions": sessions, "parts": parts}
+
+
+def _max_source_mtime(store) -> float:
+    """Newest mtime across all source locations (files + dirs).
+
+    For opencode this is the DB file's mtime; for Claude Code it walks the
+    projects tree. Cheap relative to parsing, and a good staleness signal.
+    """
+    newest = 0.0
+    for src in getattr(store, "sources", []):
+        loc = src.location()
+        if loc is None:
+            continue
+        try:
+            if loc.is_file():
+                newest = max(newest, loc.stat().st_mtime)
+            elif loc.is_dir():
+                for p in loc.rglob("*.jsonl"):
+                    try:
+                        newest = max(newest, p.stat().st_mtime)
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return newest
 
 
 def _to_match_query(query: str) -> str:

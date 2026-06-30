@@ -274,6 +274,19 @@ def cmd_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def _maybe_warn_stale_index(store: Store) -> None:
+    """Hint (once) that the FTS index is stale, so results may miss new
+    sessions. Cheap mtime check; no-op when there's no index."""
+    try:
+        from . import fts
+
+        index = fts.FtsIndex()
+        if index.exists() and index.is_stale(store):
+            _eprint("note: search index looks out of date; run 'agentscroll index' to refresh")
+    except Exception:  # never let a hint break search
+        pass
+
+
 def cmd_search(args: argparse.Namespace) -> int:
     store = _make_store(args)
     hits = list(
@@ -285,6 +298,7 @@ def cmd_search(args: argparse.Namespace) -> int:
             limit=args.limit,
         )
     )
+    _maybe_warn_stale_index(store)
     if not hits:
         _eprint("no matches")
         return 1
@@ -440,12 +454,36 @@ def cmd_web(args: argparse.Namespace) -> int:
         opener = webopen.open_window if args.window else _open_tab
         threading.Timer(0.8, lambda: opener(url)).start()
 
+    _background_index_refresh()
+
     server = uvicorn.Server(
         uvicorn.Config(app, host=args.host, port=port, log_level="warning")
     )
     server_holder["server"] = server
     server.run()
     return 0
+
+
+def _background_index_refresh() -> None:
+    """If an FTS index exists and is stale, refresh it in a daemon thread.
+
+    Opt-in by virtue of an index existing; runs off the request path so the
+    UI is usable immediately and shutdown isn't blocked.
+    """
+    import threading
+
+    def work() -> None:
+        try:
+            from . import fts
+
+            index = fts.FtsIndex()
+            store = Store()
+            if index.exists() and index.is_stale(store):
+                index.sync(store)
+        except Exception:
+            pass  # best-effort; search still works via the existing index
+
+    threading.Thread(target=work, daemon=True).start()
 
 
 def _pywebview_available() -> bool:
@@ -550,6 +588,7 @@ def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     )
     t = threading.Thread(target=server.run, daemon=True)
     t.start()
+    _background_index_refresh()
     _eprint(f"agentscroll app -> {url}  (read-only; close the window to quit)")
     bridge = _AppBridge(url)
     window = webview.create_window("agentscroll", url, width=1280, height=860, js_api=bridge)

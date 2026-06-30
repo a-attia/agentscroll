@@ -121,3 +121,31 @@ def test_sync_prunes_deleted_sessions(index):
     stats = index.sync(store1)
     assert stats["removed"] == 1
     assert index.stats()["sessions"] == 1
+
+
+def test_is_stale_detects_source_changes(tmp_path):
+    # Use a real file-backed ClaudeCode source so mtimes are meaningful.
+    import json
+    import time
+
+    from agentscroll.sources.claudecode import ClaudeCodeSource
+
+    proj = tmp_path / "projects" / "-p"
+    proj.mkdir(parents=True)
+    sid = "11111111-1111-1111-1111-111111111111"
+    f = proj / f"{sid}.jsonl"
+    f.write_text(json.dumps({
+        "type": "user", "timestamp": "2026-06-01T10:00:00Z", "sessionId": sid,
+        "cwd": "/p", "message": {"role": "user", "content": "hello"}}) + "\n")
+
+    store = Store([ClaudeCodeSource(root=tmp_path / "projects")])
+    index = fts.FtsIndex(tmp_path / "index.db")
+    index.sync(store)
+    assert index.is_stale(store) is False
+
+    time.sleep(1.1)  # exceed the 1s slack
+    with f.open("a") as fh:
+        fh.write(json.dumps({
+            "type": "assistant", "timestamp": "2026-06-01T10:05:00Z", "sessionId": sid,
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "new"}]}}) + "\n")
+    assert index.is_stale(store) is True
