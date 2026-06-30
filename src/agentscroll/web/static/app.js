@@ -712,15 +712,50 @@ function stepFind(dir) {
 // export / copy
 // ====================================================================
 
+// True when running inside the native pywebview window (no browser download
+// manager or working window.print()); the Python bridge handles those.
+function nativeApi() {
+  return (window.pywebview && window.pywebview.api) || null;
+}
+
 function exportUrl(meta, fmt, download) {
   const p = new URLSearchParams({ format: fmt, reasoning: String(state.reasoning), tools: String(state.tools) });
   if (download) p.set("download", "true");
   return `/api/export/${enc(meta.source)}/${enc(meta.id)}?${p}`;
 }
-function downloadExport(meta, fmt) {
-  const a = el("a", { href: exportUrl(meta, fmt, true) });
-  document.body.append(a); a.click(); a.remove();
+
+const _EXT = { markdown: "md", md: "md", json: "json", html: "html", text: "txt", txt: "txt" };
+
+async function downloadExport(meta, fmt) {
+  const ext = _EXT[fmt] || "txt";
+  const fname = `${meta.source}_${meta.short_id}.${ext}`;
+  let text;
+  try {
+    const r = await fetch(exportUrl(meta, fmt, false));
+    if (!r.ok) throw new Error(`${r.status}`);
+    text = await r.text();
+  } catch (err) { toast("export failed: " + err.message); return; }
+
+  const api = nativeApi();
+  if (api) {
+    // Native window: save via a real OS dialog through the Python bridge.
+    try {
+      const res = await api.save_file(fname, text);
+      toast(res.startsWith("saved") ? `saved ${fname}` : res);
+    } catch (err) { toast("save failed: " + err.message); }
+    return;
+  }
+  // Browser: force a real download via a Blob URL + the download attribute
+  // (reliable regardless of the response Content-Type).
+  const blob = new Blob([text], { type: "application/octet-stream" });
+  const objUrl = URL.createObjectURL(blob);
+  const a = el("a", { href: objUrl, download: fname });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(objUrl), 2000);
 }
+
 async function copySession(meta, fmt) {
   try {
     const r = await fetch(exportUrl(meta, fmt, false));
@@ -731,9 +766,20 @@ async function copySession(meta, fmt) {
 }
 
 async function printSession(meta) {
-  // Render the full session as standalone HTML (server-side, print-friendly)
-  // into a hidden iframe, then invoke the browser's print dialog. Using an
-  // iframe (rather than window.open) avoids popup blockers.
+  const api = nativeApi();
+  if (api) {
+    // The native webview can't reliably open the OS print dialog; open a
+    // dedicated print page in the user's real browser, which can print.
+    const q = `/print/${enc(meta.source)}/${enc(meta.id)}?` +
+      new URLSearchParams({ reasoning: String(state.reasoning), tools: String(state.tools) });
+    try {
+      await api.open_external(q);
+      toast("opened print view in your browser");
+    } catch (err) { toast("print failed: " + err.message); }
+    return;
+  }
+
+  // Browser: load the print-friendly HTML in a hidden iframe and print it.
   toast("preparing print\u2026");
   let html;
   try {
@@ -752,7 +798,6 @@ async function printSession(meta) {
     frame.contentWindow.print();
     setTimeout(() => frame.remove(), 1000);
   };
-  // Wait for the iframe document to finish laying out before printing.
   if (doc.readyState === "complete") setTimeout(go, 150);
   else frame.onload = () => setTimeout(go, 150);
 }

@@ -440,6 +440,52 @@ def cmd_install_launcher(args: argparse.Namespace) -> int:
     return 0
 
 
+class _AppBridge:
+    """JS<->Python API exposed to the pywebview window.
+
+    In a native webview the browser's own download/print plumbing isn't
+    available, so the frontend calls these methods (via window.pywebview.api)
+    to save a file through a native dialog and to print via the user's real
+    browser. Each method returns a small status string the JS can toast.
+    """
+
+    def __init__(self, url: str) -> None:
+        self._url = url
+        self.window = None  # set after the window is created
+
+    def is_native(self) -> bool:
+        return True
+
+    def save_file(self, suggested_name: str, content: str) -> str:
+        """Show a native Save dialog and write `content` to the chosen path."""
+        import webview
+
+        try:
+            result = self.window.create_file_dialog(
+                webview.SAVE_DIALOG, save_filename=suggested_name
+            )
+        except Exception as exc:  # pragma: no cover - GUI path
+            return f"error: {exc}"
+        if not result:
+            return "cancelled"
+        dest = result if isinstance(result, str) else result[0]
+        try:
+            with open(dest, "w", encoding="utf-8") as fh:
+                fh.write(content)
+        except OSError as exc:  # pragma: no cover - GUI path
+            return f"error: {exc}"
+        return f"saved: {dest}"
+
+    def open_external(self, path_and_query: str) -> str:
+        """Open a URL on this server in the user's real browser (for printing,
+        which the native webview can't do reliably)."""
+        from . import webopen
+
+        full = self._url + path_and_query
+        webopen.open_window(full)
+        return "opened"
+
+
 def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     try:
         import webview  # pywebview
@@ -460,7 +506,9 @@ def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     t = threading.Thread(target=server.run, daemon=True)
     t.start()
     _eprint(f"agentscroll app -> {url}  (read-only; close the window to quit)")
-    webview.create_window("agentscroll", url, width=1280, height=860)
+    bridge = _AppBridge(url)
+    window = webview.create_window("agentscroll", url, width=1280, height=860, js_api=bridge)
+    bridge.window = window
     webview.start()  # blocks until the window is closed
     # Window closed: stop the server and wait for the port to be released so
     # an immediate relaunch can reuse it.

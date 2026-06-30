@@ -235,6 +235,26 @@ def create_app(
         return Response(content=body, media_type=_MEDIA.get(format, "text/plain"),
                         headers=headers)
 
+    @app.get("/print/{source}/{session_id}")
+    def print_view(
+        source: str, session_id: str, reasoning: bool = True, tools: bool = True
+    ) -> "Response":
+        """A print-friendly HTML page that auto-opens the print dialog.
+
+        Used by the native-window 'print' action, which opens this URL in the
+        user's real browser (where window.print() works)."""
+        sess = _store.load_session(session_id, source=source)
+        if sess is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        html = export.to_html(sess, include_reasoning=reasoning, include_tools=tools)
+        # Inject an auto-print trigger before </body>.
+        auto = "<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));</script>"
+        if "</body>" in html:
+            html = html.replace("</body>", auto + "</body>", 1)
+        else:
+            html += auto
+        return Response(content=html, media_type="text/html; charset=utf-8")
+
     @app.get("/api/health")
     def api_health() -> dict[str, Any]:
         return {"status": "ok", "version": __version__,
