@@ -6,6 +6,8 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-06-30
+
 ### Added
 
 - `scrollback uninstall`: removes the artifacts scrollback created (Desktop
@@ -13,8 +15,6 @@ follow [Semantic Versioning](https://semver.org/).
   confirmation prompt (`--yes` / `--dry-run`). It never touches agent data
   and never self-removes the package; it prints the right `pip`/`pipx
   uninstall` command instead.
-
-## [0.1.1] - 2026-06-30
 
 ### Fixed
 
