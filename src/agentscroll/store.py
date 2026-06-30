@@ -138,13 +138,89 @@ class Store:
         until: datetime | None = None,
         limit: int | None = None,
         context: int = 80,
+        use_index: bool = True,
     ) -> Iterator[SearchHit]:
-        """Yield hits where `query` (case-insensitive) appears in any part.
+        """Yield hits where `query` appears in any message part.
 
-        Searches loaded message/part text across all listed sessions. This
-        is a lexical scan (no index); fine for local single-user volumes
-        and keeps the "no background process" promise.
+        If an FTS index exists (built via `agentscroll index`) and
+        `use_index` is True, the fast indexed path is used. Otherwise this
+        falls back to a lexical scan over the live data -- zero setup, always
+        correct, but O(corpus) per query.
         """
+        if use_index:
+            indexed = self._search_indexed(
+                query, directory=directory, since=since, until=until, limit=limit
+            )
+            if indexed is not None:
+                yield from indexed
+                return
+        yield from self._search_lexical(
+            query, directory=directory, since=since, until=until,
+            limit=limit, context=context,
+        )
+
+    def _search_indexed(
+        self, query, *, directory, since, until, limit
+    ) -> Iterator[SearchHit] | None:
+        """Indexed search. Returns None if the index is unavailable (caller
+        then falls back to lexical).
+
+        The FTS query itself is ~instant; the only expensive thing is mapping
+        a hit's session id back to session metadata. So we resolve metadata
+        *lazily* per distinct session that actually appears in results
+        (usually few), via the cheap per-adapter `load_session_meta`. We only
+        pay for a full `list_sessions` when directory/date filters are given.
+        """
+        from . import fts
+
+        index = fts.FtsIndex()
+        if not index.exists():
+            return None
+
+        source_names = [s.name for s in self._sources]
+        filtering = directory is not None or since is not None or until is not None
+        allowed: set[tuple[str, str]] | None = None
+        if filtering:
+            allowed = {
+                (s.source, s.id)
+                for s in self.list_sessions(directory=directory, since=since, until=until)
+            }
+
+        meta_cache: dict[tuple[str, str], Session | None] = {}
+
+        def meta_for(source: str, sid: str) -> Session | None:
+            k = (source, sid)
+            if k not in meta_cache:
+                src = next((s for s in self._sources if s.name == source), None)
+                meta_cache[k] = src.load_session_meta(sid) if src else None
+            return meta_cache[k]
+
+        def gen() -> Iterator[SearchHit]:
+            count = 0
+            for hit in index.search(query, sources=source_names):
+                key = (hit.source, hit.session_id)
+                if allowed is not None and key not in allowed:
+                    continue
+                meta = meta_for(hit.source, hit.session_id)
+                if meta is None:
+                    continue  # stale index entry (session deleted)
+                part = Part(id="", type=hit.part_type, text="", tool_name=hit.tool_name)
+                msg = Message(id=hit.message_id, role=hit.role, created=None, parts=(part,))
+                yield SearchHit(
+                    session=meta,
+                    message=msg,
+                    part=part,
+                    snippet=_clean_snippet(hit.text),
+                )
+                count += 1
+                if limit is not None and count >= limit:
+                    return
+
+        return gen()
+
+    def _search_lexical(
+        self, query, *, directory, since, until, limit, context
+    ) -> Iterator[SearchHit]:
         ql = query.lower()
         count = 0
         for meta in self.list_sessions(directory=directory, since=since, until=until):
@@ -222,3 +298,14 @@ def _snippet(text: str, pos: int, qlen: int, context: int) -> str:
     prefix = "..." if start > 0 else ""
     suffix = "..." if end < len(text) else ""
     return (prefix + text[start:end] + suffix).replace("\n", " ")
+
+
+def _clean_snippet(snip: str) -> str:
+    """Normalize an FTS5 snippet for display.
+
+    The index requests snippets with \\x02/\\x03 wrapping the matched term
+    (so the frontend/CLI can re-highlight without re-searching). We strip the
+    markers here and collapse newlines; the consumers do their own
+    highlighting against the query, matching the lexical path's snippets.
+    """
+    return snip.replace("\x02", "").replace("\x03", "").replace("\n", " ").strip()

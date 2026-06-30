@@ -103,6 +103,51 @@ def cmd_sources(args: argparse.Namespace) -> int:
     return 0 if any_found else 1
 
 
+def cmd_index(args: argparse.Namespace) -> int:
+    from . import fts
+
+    index = fts.FtsIndex()
+    if args.clear:
+        if index.path.exists():
+            index.path.unlink()
+            _eprint(f"removed index {index.path}")
+        else:
+            _eprint("no index to remove")
+        return 0
+    if args.stats:
+        if not index.exists():
+            _eprint("no index built yet; run 'agentscroll index' to build one")
+            return 1
+        s = index.stats()
+        print(f"index: {index.path}")
+        print(f"sessions: {s['sessions']}   parts: {s['parts']}")
+        return 0
+    # Build / update.
+    if not fts.fts5_available():
+        _eprint(
+            "full-text search needs SQLite FTS5, which this Python's SQLite "
+            "was not built with. Search still works without an index (lexical "
+            "scan); no action needed."
+        )
+        return 1
+    store = Store()
+    if not store.sources:
+        _eprint("no sources available to index")
+        return 1
+    _eprint(f"building index at {index.path} ...")
+
+    def progress(done: int, total: int) -> None:
+        if done == total or done % 25 == 0:
+            _eprint(f"  {done}/{total} sessions", )
+
+    stats = index.sync(store, progress=progress)
+    _eprint(
+        f"done: +{stats['added']} added, {stats['updated']} updated, "
+        f"{stats['removed']} removed, {stats['unchanged']} unchanged"
+    )
+    return 0
+
+
 class _BadSource(Exception):
     """Raised when an unknown --source name is given."""
 
@@ -531,6 +576,14 @@ def build_parser() -> argparse.ArgumentParser:
     # sources
     sp = sub.add_parser("sources", help="list detected agents")
     sp.set_defaults(func=cmd_sources)
+
+    # index
+    sp = sub.add_parser(
+        "index", help="build/update the full-text search index (optional, faster search)"
+    )
+    sp.add_argument("--stats", action="store_true", help="show index stats and exit")
+    sp.add_argument("--clear", action="store_true", help="delete the index and exit")
+    sp.set_defaults(func=cmd_index)
 
     # common filters
     def add_source_flag(sp_: argparse.ArgumentParser) -> None:

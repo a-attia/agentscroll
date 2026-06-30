@@ -59,6 +59,10 @@ agentscroll show <id> --no-tools          # hide tool calls/outputs
 agentscroll search "merge conflict"       # search across all sessions
 agentscroll search "ssh" --source opencode --json
 
+agentscroll index                         # build/update the fast search index
+agentscroll index --stats                 # show index size
+agentscroll index --clear                 # delete it
+
 agentscroll export latest -f markdown -o session.md
 agentscroll export <id> -f html -o session.html
 agentscroll export <id> -f json           # to stdout
@@ -143,6 +147,26 @@ OS-specific browser paths are baked into the launcher scripts. It keeps
 agentscroll platform-agnostic (no per-OS native binary to maintain), and
 the launcher templates ship inside the package so they work for
 `pip install` users, not just source checkouts.
+
+### Fast search (optional index)
+
+By default, search is a lexical scan over the live data: zero setup, always
+correct, but `O(corpus)` per query. For a large history you can build an
+optional **full-text index** for near-instant search:
+
+```bash
+agentscroll index          # one-time build (re-run to update; it's incremental)
+```
+
+This creates a separate SQLite FTS5 database at
+`~/.cache/agentscroll/index.db` (override with `AGENTSCROLL_INDEX`). It is
+**derived and disposable** -- the source data is never modified, and
+deleting the index just reverts to the lexical scan. Re-running `index`
+only re-processes new/changed sessions and prunes deleted ones.
+
+Once built, both the CLI and the web app use it automatically (raw queries
+drop from ~1s to a few milliseconds). If your Python's SQLite lacks FTS5,
+`index` says so and search keeps working without it.
 
 #### Choosing the port
 
