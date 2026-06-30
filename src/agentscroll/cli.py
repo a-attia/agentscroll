@@ -168,6 +168,82 @@ def _web_available() -> bool:
     )
 
 
+def cmd_resume(args: argparse.Namespace) -> int:
+    store = _make_store(args)
+    src, full = store._resolve(args.selector, getattr(args, "source", None))
+    if src is None or full is None:
+        _eprint(f"session not found: {args.selector}")
+        return 1
+    sess = src.load_session_meta(full)
+    if sess is None:
+        _eprint(f"session not found: {args.selector}")
+        return 1
+    cmd = src.resume_command(sess)
+    if not cmd:
+        _eprint(f"{src.name} has no by-id resume command; open the project and "
+                "start the agent there:")
+        if sess.directory:
+            _eprint(f"  cd {sess.directory!r} && {src.name}")
+        return 1
+    if args.copy:
+        if clipboard.copy(cmd):
+            _eprint("resume command copied to clipboard")
+        else:
+            _eprint("clipboard unavailable; printing instead")
+            print(cmd)
+    else:
+        print(cmd)
+    return 0
+
+
+def cmd_stats(args: argparse.Namespace) -> int:
+    store = _make_store(args)
+    if not store.sources:
+        _no_sessions_help(store)
+        return 1
+    st = store.stats()
+    if args.json:
+        import json
+
+        print(json.dumps({
+            "sessions": st.sessions,
+            "per_source": st.per_source,
+            "total_messages": st.total_messages,
+            "total_tokens_input": st.total_tokens_input,
+            "total_tokens_output": st.total_tokens_output,
+            "total_cost": st.total_cost,
+            "oldest": st.oldest.isoformat() if st.oldest else None,
+            "newest": st.newest.isoformat() if st.newest else None,
+            "top_projects": sorted(
+                st.per_project.items(), key=lambda kv: kv[1], reverse=True
+            )[:args.top],
+        }, indent=2, ensure_ascii=False))
+        return 0
+
+    span = ""
+    if st.oldest and st.newest:
+        span = f"  ({_fmt_dt(st.oldest)} -> {_fmt_dt(st.newest)})"
+    print(f"sessions: {st.sessions}{span}")
+    print(f"messages: {st.total_messages}")
+    if st.total_tokens_input or st.total_tokens_output:
+        print(f"tokens:   {_fmt_tokens(st.total_tokens_input)} in / "
+              f"{_fmt_tokens(st.total_tokens_output)} out")
+    if st.total_cost:
+        print(f"cost:     ${st.total_cost:.2f}")
+    print()
+    print("by source:")
+    for name, count in sorted(st.per_source.items(), key=lambda kv: kv[1], reverse=True):
+        print(f"  {name:12} {count}")
+    if st.per_project:
+        print()
+        print(f"top {args.top} projects:")
+        top = sorted(st.per_project.items(), key=lambda kv: kv[1], reverse=True)[:args.top]
+        for path, count in top:
+            base = path.rstrip("/").split("/")[-1] or path
+            print(f"  {count:>5}  {base}")
+    return 0
+
+
 def cmd_index(args: argparse.Namespace) -> int:
     from . import fts
 
@@ -904,6 +980,23 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--plain", action="store_true", help="disable colour output")
     sp.add_argument("--json", action="store_true", help="JSON output")
     sp.set_defaults(func=cmd_search)
+
+    # stats
+    sp = sub.add_parser("stats", help="aggregate counts across your sessions")
+    add_source_flag(sp)
+    sp.add_argument("--top", type=_positive_int, default=10,
+                    help="how many top projects to show (default 10)")
+    sp.add_argument("--json", action="store_true", help="JSON output")
+    sp.set_defaults(func=cmd_stats)
+
+    # resume
+    sp = sub.add_parser(
+        "resume", help="print the command to resume a session in its native agent"
+    )
+    add_source_flag(sp)
+    sp.add_argument("selector", help="session id / prefix / source:id / latest")
+    sp.add_argument("--copy", action="store_true", help="copy the command to the clipboard")
+    sp.set_defaults(func=cmd_resume)
 
     # export
     sp = sub.add_parser("export", help="render a session to a file/stdout")

@@ -44,6 +44,16 @@ class OpenCodeSource(Source):
     def __init__(self, db_path: Path | None = None) -> None:
         self._db_path = db_path or _env_db()
 
+    def resume_command(self, session) -> str | None:
+        # `opencode --session <id>` resumes a session (verified via --help).
+        # Run it from the session's directory so the project context matches.
+        import shlex
+
+        cmd = f"opencode --session {session.id}"
+        if session.directory:
+            return f"cd {shlex.quote(session.directory)} && {cmd}"
+        return cmd
+
     # -- availability / location -------------------------------------------
 
     def is_available(self) -> bool:

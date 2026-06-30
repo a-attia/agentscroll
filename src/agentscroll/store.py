@@ -30,6 +30,21 @@ class SearchHit:
     snippet: str
 
 
+@dataclass(frozen=True, slots=True)
+class Stats:
+    """Aggregate counts across sessions (see `Store.stats`)."""
+
+    sessions: int
+    per_source: dict[str, int]
+    per_project: dict[str, int]
+    total_messages: int
+    total_tokens_input: int
+    total_tokens_output: int
+    total_cost: float
+    oldest: datetime | None
+    newest: datetime | None
+
+
 class Store:
     """Facade over one or more source adapters."""
 
@@ -43,6 +58,57 @@ class Store:
     def with_sources(self, names: list[str]) -> "Store":
         chosen = [s for s in registry.all_sources() if s.name in names]
         return Store(chosen)
+
+    # -- aggregate stats ----------------------------------------------------
+
+    def stats(self) -> "Stats":
+        """Aggregate session metadata across sources (metadata-only; cheap-ish).
+
+        Computes per-source and per-project session counts plus totals
+        (messages, tokens, cost) and the overall date span. Uses list-level
+        metadata only -- it does not load message bodies.
+        """
+        from collections import Counter
+
+        per_source: Counter[str] = Counter()
+        per_project: Counter[str] = Counter()
+        total_messages = 0
+        total_tokens_in = 0
+        total_tokens_out = 0
+        total_cost = 0.0
+        oldest: datetime | None = None
+        newest: datetime | None = None
+        n = 0
+
+        for s in self.list_sessions(fold_subagents=False):
+            n += 1
+            per_source[s.source] += 1
+            if s.directory:
+                per_project[s.directory] += 1
+            if s.message_count:
+                total_messages += s.message_count
+            if s.tokens_input:
+                total_tokens_in += s.tokens_input
+            if s.tokens_output:
+                total_tokens_out += s.tokens_output
+            if s.cost:
+                total_cost += s.cost
+            when = s.updated or s.created
+            if when is not None:
+                oldest = when if oldest is None or when < oldest else oldest
+                newest = when if newest is None or when > newest else newest
+
+        return Stats(
+            sessions=n,
+            per_source=dict(per_source),
+            per_project=dict(per_project),
+            total_messages=total_messages,
+            total_tokens_input=total_tokens_in,
+            total_tokens_output=total_tokens_out,
+            total_cost=total_cost,
+            oldest=oldest,
+            newest=newest,
+        )
 
     # -- listing ------------------------------------------------------------
 

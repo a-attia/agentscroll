@@ -157,6 +157,19 @@ class ClaudeCodeSource(Source):
     def __init__(self, root: Path | None = None) -> None:
         self._root = root or _env_root()
 
+    def resume_command(self, session) -> str | None:
+        # `claude --resume <id>` resumes a conversation (verified via --help).
+        # Subagent sidechains aren't separately resumable -> use the parent id.
+        import shlex
+
+        sid = session.parent_id or session.id
+        if _CHILD_SEP in sid:
+            sid = sid.split(_CHILD_SEP, 1)[0]
+        cmd = f"claude --resume {sid}"
+        if session.directory:
+            return f"cd {shlex.quote(session.directory)} && {cmd}"
+        return cmd
+
     # -- availability / location -------------------------------------------
 
     def is_available(self) -> bool:

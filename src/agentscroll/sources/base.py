@@ -105,6 +105,11 @@ class Source(abc.ABC):
         sess = self.load_session(session_id)
         return sess.messages if sess else ()
 
+    def resume_command(self, session: "Session") -> str | None:
+        """Return the shell command to resume `session` in its native agent,
+        or None if the agent has no by-id resume. Override per adapter."""
+        return None
+
 
 def _MIN_DT():
     from datetime import datetime, timezone

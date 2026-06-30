@@ -60,6 +60,16 @@ class CodexSource(Source):
     def __init__(self, root: Path | None = None) -> None:
         self._root = root or _env_root()
 
+    def resume_command(self, session) -> str | None:
+        # Codex resumes a recorded session with `codex resume <id>` (documented;
+        # not verified on this machine). Run from the session directory.
+        import shlex
+
+        cmd = f"codex resume {session.id}"
+        if session.directory:
+            return f"cd {shlex.quote(session.directory)} && {cmd}"
+        return cmd
+
     # -- availability / location -------------------------------------------
 
     def is_available(self) -> bool:
