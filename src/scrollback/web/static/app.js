@@ -641,6 +641,9 @@ async function openSession(source, id, focusMessageId) {
   markActiveRow();
 
   $("#empty").hidden = true;
+  $("#stats").hidden = true;
+  markView("browse");
+  closeRail();   // collapse the mobile drawer once a session is chosen
   const t = $("#transcript");
   t.hidden = false;
   t.replaceChildren(el("div", { class: "loading" }, "loading transcript\u2026"));
@@ -659,6 +662,139 @@ async function openSession(source, id, focusMessageId) {
 }
 
 function enc(s) { return encodeURIComponent(s); }
+
+// ====================================================================
+// stats view (usage per tool + overall)
+// ====================================================================
+
+const SRC_LABEL = {
+  opencode: "opencode", claudecode: "Claude Code",
+  codex: "Codex", aider: "Aider",
+};
+const fmtCost = (c) => (c == null ? "\u2014" : "$" + c.toFixed(2));
+
+// Reflect the active view in the browse|stats radio switch.
+function markView(view) {
+  const b = $("#view-browse"), s = $("#view-stats");
+  if (b) b.setAttribute("aria-checked", String(view === "browse"));
+  if (s) s.setAttribute("aria-checked", String(view === "stats"));
+}
+
+// Switch to the browse view (session list + reader). Does not clear filters.
+function showBrowse() {
+  markView("browse");
+  $("#stats").hidden = true;
+  if (!state.current) $("#empty").hidden = false;
+}
+
+// -- narrow-screen session drawer -----------------------------------------
+// On wide screens the rail is a static column and these are no-ops in effect
+// (the CSS keeps the backdrop hidden); on narrow screens they open/close the
+// slide-in list.
+function openRail() {
+  $("#rail").classList.add("show");
+  $("#rail-backdrop").hidden = false;
+  $("#rail-toggle")?.setAttribute("aria-expanded", "true");
+}
+function closeRail() {
+  $("#rail").classList.remove("show");
+  $("#rail-backdrop").hidden = true;
+  $("#rail-toggle")?.setAttribute("aria-expanded", "false");
+}
+function toggleRail() {
+  if ($("#rail").classList.contains("show")) closeRail();
+  else openRail();
+}
+
+async function openStats() {
+  markView("stats");
+  state.current = null;
+  markActiveRow();
+  history.replaceState(null, "", location.pathname);
+  $("#transcript").hidden = true;
+  $("#empty").hidden = true;
+  const panel = $("#stats");
+  panel.hidden = false;
+  panel.replaceChildren(el("div", { class: "loading" }, "computing statistics\u2026"));
+  $("#reader").scrollTop = 0;
+
+  // Stats honours the same since/until as the browse filters.
+  const p = new URLSearchParams();
+  if (state.since) p.set("since", state.since);
+  if (state.until) p.set("until", state.until);
+  const qs = p.toString();
+
+  let data;
+  try {
+    data = await getJSON("/api/stats" + (qs ? "?" + qs : ""));
+  } catch (err) {
+    panel.replaceChildren(el("div", { class: "loading" }, "error: " + err.message));
+    return;
+  }
+  panel.replaceChildren(renderStats(data));
+}
+
+function statCell(n) { return el("td", { class: "num" }, fmtTokens(n)); }
+
+function renderStats(d) {
+  const wrap = el("div", { class: "stats-wrap" });
+
+  // Scope line: reflect the active since/until filters (or "all time").
+  const scope = (state.since || state.until)
+    ? `filtered ${state.since || "\u2026"} \u2192 ${state.until || "now"}`
+    : "all time";
+
+  wrap.append(el("div", { class: "stats-head" },
+    el("h1", {}, "Usage statistics"),
+    el("p", { class: "stats-sub" },
+      `${scope} \u00b7 ${d.sessions} sessions \u00b7 ${fmtTokens(d.messages)} messages` +
+      (d.oldest ? ` \u00b7 ${fmtDate(d.oldest)} \u2192 ${fmtDate(d.newest)}` : ""))));
+
+  // Per-tool table.
+  const head = el("tr", {},
+    el("th", {}, "tool"),
+    el("th", { class: "num" }, "sessions"),
+    el("th", { class: "num" }, "messages"),
+    el("th", { class: "num" }, "input"),
+    el("th", { class: "num" }, "output"),
+    el("th", { class: "num" }, "cache read"),
+    el("th", { class: "num" }, "cache write"),
+    el("th", { class: "num" }, "reasoning"),
+    el("th", { class: "num" }, "cost"));
+
+  const body = el("tbody", {});
+  for (const r of d.per_source) {
+    body.append(el("tr", {},
+      el("td", {}, el("span", { class: "src", style: `--src:${srcColor(r.source)}` },
+        SRC_LABEL[r.source] || r.source)),
+      el("td", { class: "num" }, String(r.sessions)),
+      statCell(r.messages),
+      statCell(r.tokens_input), statCell(r.tokens_output),
+      statCell(r.tokens_cache_read), statCell(r.tokens_cache_write),
+      statCell(r.tokens_reasoning),
+      el("td", { class: "num" }, fmtCost(r.cost))));
+  }
+
+  const t = d.totals;
+  const foot = el("tfoot", {}, el("tr", { class: "totals" },
+    el("td", {}, "all tools"),
+    el("td", { class: "num" }, String(d.sessions)),
+    statCell(d.messages),
+    statCell(t.tokens_input), statCell(t.tokens_output),
+    statCell(t.tokens_cache_read), statCell(t.tokens_cache_write),
+    statCell(t.tokens_reasoning),
+    el("td", { class: "num" }, fmtCost(t.cost))));
+
+  wrap.append(el("table", { class: "stats-table" }, el("thead", {}, head), body, foot));
+
+  // Explanatory note (the four-bucket / cache-dominates caveat).
+  wrap.append(el("p", { class: "stats-note" },
+    "Tokens are counted in four buckets. In agentic sessions the conversation " +
+    "context is re-sent each turn but served from the prompt cache, so cache " +
+    "reads usually dominate volume while costing a fraction of fresh input. " +
+    "Cost is shown only where the tool records it (\u2014 = not reported)."));
+  return wrap;
+}
 
 function renderHeader(meta) {
   const t = $("#transcript");
@@ -1138,6 +1274,10 @@ function openSelection() {
 document.addEventListener("keydown", (e) => {
   const typing = ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
   if (e.key === "/" && !typing) { e.preventDefault(); searchInput.focus(); searchInput.select(); return; }
+  // Esc closes the mobile session drawer first, wherever focus is.
+  if (e.key === "Escape" && $("#rail").classList.contains("show")) {
+    closeRail(); return;
+  }
   if (typing) {
     if (e.key === "Escape") document.activeElement.blur();
     return;
@@ -1177,10 +1317,12 @@ function clearAll() {
   if (since) since.value = "";
   if (until) until.value = "";
 
-  // Close the open transcript.
+  // Close the open transcript / stats view; return to browse.
   state.current = null;
   $("#transcript").hidden = true;
+  $("#stats").hidden = true;
   $("#empty").hidden = false;
+  markView("browse");
   history.replaceState(null, "", location.pathname);
 
   resetAndLoad();
@@ -1190,12 +1332,27 @@ function clearAll() {
 searchInput.addEventListener("input", onSearchInput);
 scopeTitlesBtn.addEventListener("click", () => toggleScope("titles"));
 scopeContentsBtn.addEventListener("click", () => toggleScope("contents"));
-$("#home-btn").addEventListener("click", clearAll);
+$("#view-browse").addEventListener("click", showBrowse);
+$("#view-stats").addEventListener("click", openStats);
+$("#rail-toggle").addEventListener("click", toggleRail);
+$("#rail-backdrop").addEventListener("click", closeRail);
+// Normalize drawer state when crossing the wide/narrow breakpoint, so an
+// open drawer doesn't get "stuck" (stale .show / aria-expanded / backdrop)
+// after a resize back and forth.
+matchMedia("(min-width: 881px)").addEventListener("change", (e) => {
+  if (e.matches) closeRail();
+});
 $("#brand").addEventListener("click", clearAll);
 $("#brand").style.cursor = "pointer";
 $("#theme-toggle").addEventListener("click", toggleTheme);
-$("#since").addEventListener("change", (e) => { state.since = e.target.value; resetAndLoad(); });
-$("#until").addEventListener("change", (e) => { state.until = e.target.value; resetAndLoad(); });
+// Date filters drive both views: refresh the stats page in place when it is
+// open, otherwise reload the browse list.
+function onDateChange() {
+  if (!$("#stats").hidden) openStats();
+  else resetAndLoad();
+}
+$("#since").addEventListener("change", (e) => { state.since = e.target.value; onDateChange(); });
+$("#until").addEventListener("change", (e) => { state.until = e.target.value; onDateChange(); });
 
 function openFromHash() {
   const h = decodeURIComponent(location.hash.replace(/^#/, ""));

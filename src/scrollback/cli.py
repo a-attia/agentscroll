@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from . import __version__, clipboard, export, serverconfig
 from .models import Session
 from .sources import registry
-from .store import Store
+from .store import Stats, Store
 
 
 def _fmt_dt(dt: datetime | None) -> str:
@@ -201,13 +201,26 @@ def cmd_stats(args: argparse.Namespace) -> int:
     if not store.sources:
         _no_sessions_help(store)
         return 1
-    st = store.stats()
+    st = store.stats(since=args.since, until=args.until)
     if args.json:
         import json
 
         print(json.dumps({
             "sessions": st.sessions,
             "per_source": st.per_source,
+            "per_source_usage": {
+                src: {
+                    "sessions": u.sessions,
+                    "messages": u.messages,
+                    "tokens_input": u.tokens_input,
+                    "tokens_output": u.tokens_output,
+                    "tokens_cache_read": u.tokens_cache_read,
+                    "tokens_cache_write": u.tokens_cache_write,
+                    "tokens_reasoning": u.tokens_reasoning,
+                    "cost": u.cost,
+                }
+                for src, u in st.per_source_usage.items()
+            },
             "total_messages": st.total_messages,
             "total_tokens_input": st.total_tokens_input,
             "total_tokens_output": st.total_tokens_output,
@@ -239,9 +252,7 @@ def cmd_stats(args: argparse.Namespace) -> int:
     if st.total_cost:
         print(f"cost:     ${st.total_cost:.2f}")
     print()
-    print("by source:")
-    for name, count in sorted(st.per_source.items(), key=lambda kv: kv[1], reverse=True):
-        print(f"  {name:12} {count}")
+    _print_usage_by_tool(st)
     if st.per_project:
         print()
         print(f"top {args.top} projects:")
@@ -250,6 +261,44 @@ def cmd_stats(args: argparse.Namespace) -> int:
             base = path.rstrip("/").split("/")[-1] or path
             print(f"  {count:>5}  {base}")
     return 0
+
+
+def _print_usage_by_tool(st: Stats) -> None:
+    """Print a per-tool usage table (sessions/messages/tokens/cost) + totals."""
+    rows = sorted(
+        st.per_source_usage.values(),
+        key=lambda u: (u.tokens_input + u.tokens_output
+                       + u.tokens_cache_read + u.tokens_cache_write),
+        reverse=True,
+    )
+    header = ("tool", "sess", "msgs", "in", "out", "cache r", "cache w", "cost")
+    widths = (11, 6, 7, 8, 8, 9, 9, 9)
+
+    def fmt_row(cells: tuple) -> str:
+        out = []
+        for i, c in enumerate(cells):
+            out.append(f"{c:<{widths[i]}}" if i == 0 else f"{c:>{widths[i]}}")
+        return "  ".join(out)
+
+    def cost_str(c) -> str:
+        return "-" if c is None else f"${c:.2f}"
+
+    print("usage by tool:")
+    print("  " + fmt_row(header))
+    for u in rows:
+        print("  " + fmt_row((
+            u.source, str(u.sessions), _fmt_tokens(u.messages),
+            _fmt_tokens(u.tokens_input), _fmt_tokens(u.tokens_output),
+            _fmt_tokens(u.tokens_cache_read), _fmt_tokens(u.tokens_cache_write),
+            cost_str(u.cost),
+        )))
+    # Totals row.
+    print("  " + fmt_row((
+        "all", str(st.sessions), _fmt_tokens(st.total_messages),
+        _fmt_tokens(st.total_tokens_input), _fmt_tokens(st.total_tokens_output),
+        _fmt_tokens(st.total_tokens_cache_read), _fmt_tokens(st.total_tokens_cache_write),
+        cost_str(st.total_cost or None),
+    )))
 
 
 def cmd_index(args: argparse.Namespace) -> int:
@@ -776,11 +825,11 @@ def _install_macos_about_link() -> None:
         repo = "https://github.com/a-attia/scrollback"
         credits = NSAttributedString.alloc().initWithString_attributes_(
             "Navigate, search, copy, and export your AI coding-agent sessions.\n"
-            "Local-first and read-only.\n\n",
+            "Local-first and read-only.\n\nRepository:  ",
             {NSFontAttributeName: NSFont.systemFontOfSize_(11)},
         )
         link = NSAttributedString.alloc().initWithString_attributes_(
-            repo,
+            "github.com/a-attia/scrollback",
             {
                 "NSLink": NSURL.URLWithString_(repo),
                 NSFontAttributeName: NSFont.systemFontOfSize_(11),
@@ -1088,6 +1137,10 @@ def build_parser() -> argparse.ArgumentParser:
     # stats
     sp = sub.add_parser("stats", help="aggregate counts across your sessions")
     add_source_flag(sp)
+    sp.add_argument("--since", type=_parse_date, metavar="DATE",
+                    help="only count sessions updated on/after DATE (YYYY-MM-DD)")
+    sp.add_argument("--until", type=_parse_date, metavar="DATE",
+                    help="only count sessions updated on/before DATE (YYYY-MM-DD)")
     sp.add_argument("--top", type=_positive_int, default=10,
                     help="how many top projects to show (default 10)")
     sp.add_argument("--json", action="store_true", help="JSON output")

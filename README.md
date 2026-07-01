@@ -14,13 +14,13 @@ modifies, locks for writing, or uploads your data.
 You can use it two ways. From the **command line**, list, search, and export
 your sessions in a single scriptable tool:
 
-![scrollback listing recent sessions in the terminal.](https://raw.githubusercontent.com/a-attia/scrollback/v0.2.0/assets/screenshots/cli.png)
+![scrollback listing recent sessions in the terminal.](https://raw.githubusercontent.com/a-attia/scrollback/v0.3.0/assets/screenshots/cli.png)
 
 Or open the **local web app** to read a transcript in full — with rendered
 Markdown, syntax-highlighted code, and typeset LaTeX math:
 
 ![The scrollback web app showing a session list beside a transcript with
-rendered Markdown, highlighted code, and typeset equations.](https://raw.githubusercontent.com/a-attia/scrollback/v0.2.0/assets/screenshots/web.png)
+rendered Markdown, highlighted code, and typeset equations.](https://raw.githubusercontent.com/a-attia/scrollback/v0.3.0/assets/screenshots/web.png)
 
 Both views read the same on-disk session stores, so you can jump between
 them freely. (The screenshots above use synthetic demo data.)
@@ -197,9 +197,10 @@ small vanilla-JavaScript frontend with no build step — bound to
 
 What it offers:
 
-- A **session list** with source-filter chips, date filters, and a
-  **home** button to reset everything; it loads incrementally as you
-  scroll.
+- A **browse / stats** view switch in the header; the brand mark resets
+  everything to the initial state.
+- A **session list** with source-filter chips and date filters, loading
+  incrementally as you scroll.
 - An explicit **search scope** toggle — search session **titles**, message
   **contents**, or both at once (combined results are grouped).
 - **Subagents** collapsed under their parent, expandable on demand
@@ -209,9 +210,16 @@ What it offers:
   **Markdown rendering with syntax highlighting**, **LaTeX math** (source /
   paste-ready / typeset), in-transcript find, show-reasoning / show-tools
   toggles, and per-message and per-session copy.
+- A **stats page** with usage broken down **per tool** (sessions, messages,
+  input/output/cache tokens, and cost where the tool records it) plus an
+  overall total; it respects the same `since`/`until` date filters.
 - **Export** (Markdown / HTML / JSON), **print**, a **light/dark theme**,
   and **keyboard navigation** (`/` search, `j`/`k` move, `Enter` open,
   `f` find, `h` collapse header, `Esc` blur).
+
+On a narrow window (for example split-screen) the session list collapses
+into a **slide-in drawer** you open with the `sessions` button, so browsing
+still works when there isn't room for a permanent sidebar.
 
 Large transcripts open instantly because the app loads a session's header
 first and then pages messages in as you scroll, rather than transferring an

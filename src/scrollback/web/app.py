@@ -279,6 +279,52 @@ def create_app(
             html += auto
         return Response(content=html, media_type="text/html; charset=utf-8")
 
+    @app.get("/api/stats")
+    def api_stats(since: str | None = None, until: str | None = None) -> dict[str, Any]:
+        """Aggregate usage statistics: per-source breakdown plus overall totals.
+
+        Honours the same `since`/`until` window as the session list, so the
+        stats page reflects the active date filters. Metadata-only (does not
+        load message bodies), so it is cheap to compute on demand.
+        """
+        st = _store.stats(since=_parse_dt(since), until=_parse_dt(until))
+
+        def _src_row(u) -> dict[str, Any]:
+            return {
+                "source": u.source,
+                "sessions": u.sessions,
+                "messages": u.messages,
+                "tokens_input": u.tokens_input,
+                "tokens_output": u.tokens_output,
+                "tokens_cache_read": u.tokens_cache_read,
+                "tokens_cache_write": u.tokens_cache_write,
+                "tokens_reasoning": u.tokens_reasoning,
+                "cost": u.cost,
+            }
+
+        # Sort by total token volume (in + out + cache), busiest first.
+        rows = sorted(
+            (_src_row(u) for u in st.per_source_usage.values()),
+            key=lambda r: (r["tokens_input"] + r["tokens_output"]
+                           + r["tokens_cache_read"] + r["tokens_cache_write"]),
+            reverse=True,
+        )
+        return {
+            "sessions": st.sessions,
+            "messages": st.total_messages,
+            "per_source": rows,
+            "totals": {
+                "tokens_input": st.total_tokens_input,
+                "tokens_output": st.total_tokens_output,
+                "tokens_cache_read": st.total_tokens_cache_read,
+                "tokens_cache_write": st.total_tokens_cache_write,
+                "tokens_reasoning": st.total_tokens_reasoning,
+                "cost": st.total_cost,
+            },
+            "oldest": st.oldest.isoformat() if st.oldest else None,
+            "newest": st.newest.isoformat() if st.newest else None,
+        }
+
     @app.get("/api/health")
     def api_health() -> dict[str, Any]:
         return {"status": "ok", "version": __version__,

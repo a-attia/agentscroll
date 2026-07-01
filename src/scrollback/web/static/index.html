@@ -19,10 +19,23 @@
 </head>
 <body>
   <header class="bar">
-    <div class="brand" id="brand" title="Home (reset everything)">
+    <button class="brand" id="brand" title="Reset: clear search, filters, and close the open view">
       <span class="brand-mark">&gt;_</span>
       <span class="brand-name">scrollback</span>
+    </button>
+
+    <!-- narrow screens only: reveal the session list (hidden by default there) -->
+    <button id="rail-toggle" class="rail-toggle icon-btn" aria-expanded="false"
+            aria-controls="rail" title="Show session list">&#9776; sessions</button>
+
+    <!-- View switch: exactly one of browse / stats is active at a time. -->
+    <div class="viewswitch" role="radiogroup" aria-label="View">
+      <button id="view-browse" class="view-btn" role="radio" aria-checked="true"
+              title="Browse and search sessions">browse</button>
+      <button id="view-stats" class="view-btn" role="radio" aria-checked="false"
+              title="Usage statistics per tool">stats</button>
     </div>
+
     <div class="search">
       <input id="search-input" type="search" autocomplete="off" spellcheck="false"
              placeholder="search&hellip;" />
@@ -33,9 +46,9 @@
                 title="Search inside message text across sessions">contents</button>
       </div>
     </div>
+
     <div class="bar-right">
-      <button id="home-btn" class="icon-btn" title="Reset: clear search, filters, and close the open session">&#8962; home</button>
-      <button id="theme-toggle" class="icon-btn" title="Toggle light / dark">&#9681;</button>
+      <button id="theme-toggle" class="icon-btn" title="Toggle light / dark" aria-label="Toggle light or dark theme">&#9681;</button>
     </div>
   </header>
 
@@ -51,6 +64,7 @@
   </div>
 
   <main class="layout">
+    <div class="rail-backdrop" id="rail-backdrop" hidden></div>
     <aside class="rail" id="rail">
       <div class="rail-head">
         <span id="count" class="count">&mdash;</span>
@@ -61,11 +75,13 @@
 
     <section class="reader" id="reader">
       <div class="empty" id="empty">
-        <div class="empty-mark">&gt;_</div>
+        <img class="empty-icon" src="/favicon.svg" width="112" height="112"
+             alt="scrollback" />
         <p>Pick a session on the left, or search to dig through everything.</p>
         <p class="empty-sub">Reading is local and read-only &mdash; nothing here writes to your agents.</p>
       </div>
       <article class="transcript" id="transcript" hidden></article>
+      <section class="stats-view" id="stats" hidden></section>
     </section>
   </main>
 

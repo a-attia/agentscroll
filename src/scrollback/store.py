@@ -31,12 +31,32 @@ class SearchHit:
 
 
 @dataclass(frozen=True, slots=True)
+class SourceUsage:
+    """Per-source rollup of sessions, messages, tokens, and cost.
+
+    `cost` is None when the source does not report cost at all (e.g. Claude
+    Code / Codex / Aider), distinguishing "unknown" from a real $0.00.
+    """
+
+    source: str
+    sessions: int = 0
+    messages: int = 0
+    tokens_input: int = 0
+    tokens_output: int = 0
+    tokens_cache_read: int = 0
+    tokens_cache_write: int = 0
+    tokens_reasoning: int = 0
+    cost: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Stats:
     """Aggregate counts across sessions (see `Store.stats`)."""
 
     sessions: int
     per_source: dict[str, int]
     per_project: dict[str, int]
+    per_source_usage: dict[str, SourceUsage]
     total_messages: int
     total_tokens_input: int
     total_tokens_output: int
@@ -71,12 +91,18 @@ class Store:
 
     # -- aggregate stats ----------------------------------------------------
 
-    def stats(self) -> "Stats":
+    def stats(
+        self,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> "Stats":
         """Aggregate session metadata across sources (metadata-only; cheap-ish).
 
         Computes per-source and per-project session counts plus totals
         (messages, tokens, cost) and the overall date span. Uses list-level
-        metadata only -- it does not load message bodies.
+        metadata only -- it does not load message bodies. `since`/`until`
+        restrict the aggregation to sessions in that date window.
         """
         from collections import Counter
 
@@ -93,34 +119,64 @@ class Store:
         newest: datetime | None = None
         n = 0
 
-        for s in self.list_sessions(fold_subagents=False):
+        # Per-source accumulators (mutable during the pass, frozen at the end).
+        # `cost` starts at None so a source that never reports cost stays
+        # "unknown" rather than showing a misleading $0.00.
+        usage: dict[str, dict] = {}
+
+        def _acc(src: str) -> dict:
+            return usage.setdefault(src, {
+                "sessions": 0, "messages": 0, "tokens_input": 0,
+                "tokens_output": 0, "tokens_cache_read": 0,
+                "tokens_cache_write": 0, "tokens_reasoning": 0, "cost": None,
+            })
+
+        for s in self.list_sessions(since=since, until=until, fold_subagents=False):
             n += 1
             per_source[s.source] += 1
             if s.directory:
                 per_project[s.directory] += 1
+
+            u = _acc(s.source)
+            u["sessions"] += 1
             if s.message_count:
                 total_messages += s.message_count
+                u["messages"] += s.message_count
             if s.tokens_input:
                 total_tokens_in += s.tokens_input
+                u["tokens_input"] += s.tokens_input
             if s.tokens_output:
                 total_tokens_out += s.tokens_output
+                u["tokens_output"] += s.tokens_output
             if s.tokens_cache_read:
                 total_cache_read += s.tokens_cache_read
+                u["tokens_cache_read"] += s.tokens_cache_read
             if s.tokens_cache_write:
                 total_cache_write += s.tokens_cache_write
+                u["tokens_cache_write"] += s.tokens_cache_write
             if s.tokens_reasoning:
                 total_reasoning += s.tokens_reasoning
-            if s.cost:
+                u["tokens_reasoning"] += s.tokens_reasoning
+            # Presence check (not truthiness): a real reported $0.00 must count
+            # as "known cost", keeping the None-vs-0.0 distinction the
+            # SourceUsage docstring promises.
+            if s.cost is not None:
                 total_cost += s.cost
+                u["cost"] = (u["cost"] or 0.0) + s.cost
             when = s.updated or s.created
             if when is not None:
                 oldest = when if oldest is None or when < oldest else oldest
                 newest = when if newest is None or when > newest else newest
 
+        per_source_usage = {
+            src: SourceUsage(source=src, **vals) for src, vals in usage.items()
+        }
+
         return Stats(
             sessions=n,
             per_source=dict(per_source),
             per_project=dict(per_project),
+            per_source_usage=per_source_usage,
             total_messages=total_messages,
             total_tokens_input=total_tokens_in,
             total_tokens_output=total_tokens_out,

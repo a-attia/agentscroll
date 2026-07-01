@@ -6,6 +6,31 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-30
+
+### Added
+
+- **Usage statistics page (web) + per-tool breakdown.** A new `stats` view
+  aggregates usage by tool (opencode / Claude Code / Codex / Aider) plus an
+  overall total: sessions, messages, input/output/cache tokens, and cost
+  (shown only where the tool records it). `scrollback stats` gains the same
+  per-tool table and a `--json` breakdown; a `/api/stats` endpoint backs the
+  web page. Both honour `since`/`until` date filters (new `--since`/`--until`
+  on the CLI `stats` command).
+- **Redesigned top bar.** A radio-style `browse | stats` view switch (exactly
+  one active) replaces the buried icon buttons; the brand mark resets to home;
+  the theme toggle is pinned to the far right as a setting.
+- **Responsive session drawer.** On narrow screens (e.g. split-screen) the
+  session list becomes a slide-in drawer opened by a `sessions` button, with
+  a backdrop; it closes on selection, backdrop click, or `Esc`. Previously the
+  list was hidden with no way to reach it.
+- The empty state now shows the full app icon.
+
+### Fixed
+
+- A genuine reported cost of `$0.00` is now kept distinct from "cost unknown"
+  in the per-tool usage rollup (was collapsed to unknown by a truthiness check).
+
 ## [0.2.0] - 2026-06-30
 
 ### Added
@@ -120,7 +145,8 @@ export it from a CLI and a local web app.
 - Negative pagination arguments are rejected; clearer errors for unknown
   sources, failed exports, and unavailable data sources.
 
-[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/a-attia/scrollback/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/a-attia/scrollback/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/a-attia/scrollback/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/a-attia/scrollback/compare/v0.1.0...v0.1.1

@@ -213,10 +213,10 @@ class _FakeSource:
         return next((s for s in self._s if s.id == sid), None)
 
 
-def _sess(sid, **usage):
+def _sess(sid, *, source="fake", **usage):
     from datetime import datetime, timezone
     dt = datetime(2026, 3, 14, tzinfo=timezone.utc)
-    return Session(id=sid, source="fake", title=sid, directory=None,
+    return Session(id=sid, source=source, title=sid, directory=None,
                    created=dt, updated=dt, message_count=1, **usage)
 
 
@@ -234,6 +234,58 @@ def test_stats_sums_cache_and_reasoning():
     assert st.total_tokens_cache_read == 3000
     assert st.total_tokens_cache_write == 75
     assert st.total_tokens_reasoning == 13
+
+
+class _NamedSource(_FakeSource):
+    def __init__(self, name, sessions):
+        super().__init__(sessions)
+        self.name = name
+
+
+def test_stats_per_source_usage_breakdown():
+    # Two tools, each with usage; one reports cost, the other does not.
+    oc = _NamedSource("opencode", [
+        _sess("o1", source="opencode", tokens_input=100, tokens_output=200,
+              tokens_cache_read=5000, tokens_cache_write=300, cost=0.40),
+        _sess("o2", source="opencode", tokens_input=10, tokens_output=20, cost=0.02),
+    ])
+    cc = _NamedSource("claudecode", [
+        _sess("c1", source="claudecode", tokens_input=50, tokens_output=90,
+              tokens_cache_read=8000),
+    ])
+    st = Store([oc, cc]).stats()
+
+    assert set(st.per_source_usage) == {"opencode", "claudecode"}
+    o = st.per_source_usage["opencode"]
+    assert o.sessions == 2
+    assert o.tokens_input == 110
+    assert o.tokens_cache_read == 5000
+    assert abs(o.cost - 0.42) < 1e-9
+
+    c = st.per_source_usage["claudecode"]
+    assert c.sessions == 1
+    assert c.tokens_cache_read == 8000
+    # Claude Code reported no cost -> None (not a misleading 0.0).
+    assert c.cost is None
+
+    # Per-source sums roll up to the overall totals.
+    assert st.total_tokens_input == 160
+    assert st.total_tokens_cache_read == 13000
+
+
+def test_stats_real_zero_cost_is_kept_distinct_from_none():
+    # A source that reports a genuine $0.00 (free/local model) must show cost
+    # 0.0, NOT None -- the "unknown vs real zero" distinction the SourceUsage
+    # docstring promises. (Regression: a truthiness check dropped real zeros.)
+    free = _NamedSource("opencode", [
+        _sess("z1", source="opencode", tokens_input=10, tokens_output=5, cost=0.0),
+    ])
+    none = _NamedSource("claudecode", [
+        _sess("n1", source="claudecode", tokens_input=10, tokens_output=5),
+    ])
+    st = Store([free, none]).stats()
+    assert st.per_source_usage["opencode"].cost == 0.0    # known, real zero
+    assert st.per_source_usage["claudecode"].cost is None  # unknown
 
 
 # -- export surfacing ------------------------------------------------------

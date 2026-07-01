@@ -206,6 +206,30 @@ def test_print_view_accepts_math_mode(math_client):
     assert math_client.get("/print/fake/sm?math=bogus").status_code == 400
 
 
+def test_stats_endpoint(client):
+    d = client.get("/api/stats").json()
+    assert d["sessions"] == 2            # the two FakeSource sessions
+    assert isinstance(d["per_source"], list)
+    assert d["per_source"], "expected at least one per-source row"
+    row = d["per_source"][0]
+    for key in ("source", "sessions", "messages", "tokens_input",
+                "tokens_output", "tokens_cache_read", "tokens_cache_write",
+                "tokens_reasoning", "cost"):
+        assert key in row
+    for key in ("tokens_input", "tokens_cache_read", "cost"):
+        assert key in d["totals"]
+
+
+def test_stats_endpoint_respects_date_range(client):
+    # Fixture sessions are dated 2026-01-01; a window after that excludes them.
+    empty = client.get("/api/stats?since=2026-06-01").json()
+    assert empty["sessions"] == 0
+    assert empty["per_source"] == []
+    # A window covering them includes both.
+    full = client.get("/api/stats?until=2026-12-31").json()
+    assert full["sessions"] == 2
+
+
 def test_heartbeat_config_off_by_default(client):
     cfg = client.get("/api/heartbeat-config").json()
     assert cfg["enabled"] == 0.0
