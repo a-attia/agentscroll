@@ -56,6 +56,20 @@ Remaining open ideas (not planned):
   (distinct from the current verbatim-preservation `--math latex`).
 - Per-equation copy-the-LaTeX affordance in the rendered web view.
 
+## Durable session archive ("keep sessions forever")
+
+Move scrollback beyond read-only *viewing* to durable *keeping*: a one-way
+sync that copies sessions into a user-owned vault (`~/.scrollback/archive/`)
+and retains them forever, surviving the agents' own auto-deletion (e.g.
+Claude Code's ~30-day cleanup). Lossless and re-readable as a first-class
+source, so browse/search/export/stats work over archived — even deleted —
+sessions. Reading stays strictly read-only; scrollback only ever writes to
+its own vault.
+
+Full design of record, phasing, and open questions:
+[`docs/archive-plan.md`](docs/archive-plan.md). **Planned; not started** —
+to be implemented in a dedicated session.
+
 ## Other ideas
 
 - **`tail` / `watch`**: live-follow the most recently active session as it
