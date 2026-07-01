@@ -211,6 +211,9 @@ def cmd_stats(args: argparse.Namespace) -> int:
             "total_messages": st.total_messages,
             "total_tokens_input": st.total_tokens_input,
             "total_tokens_output": st.total_tokens_output,
+            "total_tokens_cache_read": st.total_tokens_cache_read,
+            "total_tokens_cache_write": st.total_tokens_cache_write,
+            "total_tokens_reasoning": st.total_tokens_reasoning,
             "total_cost": st.total_cost,
             "oldest": st.oldest.isoformat() if st.oldest else None,
             "newest": st.newest.isoformat() if st.newest else None,
@@ -228,6 +231,11 @@ def cmd_stats(args: argparse.Namespace) -> int:
     if st.total_tokens_input or st.total_tokens_output:
         print(f"tokens:   {_fmt_tokens(st.total_tokens_input)} in / "
               f"{_fmt_tokens(st.total_tokens_output)} out")
+    if st.total_tokens_cache_read or st.total_tokens_cache_write:
+        print(f"cache:    {_fmt_tokens(st.total_tokens_cache_read)} read / "
+              f"{_fmt_tokens(st.total_tokens_cache_write)} write")
+    if st.total_tokens_reasoning:
+        print(f"reasoning:{_fmt_tokens(st.total_tokens_reasoning)} tokens")
     if st.total_cost:
         print(f"cost:     ${st.total_cost:.2f}")
     print()
@@ -339,6 +347,9 @@ def cmd_list(args: argparse.Namespace) -> int:
                 "cost": s.cost,
                 "tokens_input": s.tokens_input,
                 "tokens_output": s.tokens_output,
+                "tokens_cache_read": s.tokens_cache_read,
+                "tokens_cache_write": s.tokens_cache_write,
+                "tokens_reasoning": s.tokens_reasoning,
                 "parent_id": s.parent_id,
                 "children": [row(c) for c in s.children],
             }

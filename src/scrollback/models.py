@@ -111,10 +111,17 @@ class Session:
     agent: str | None = None
     parent_id: str | None = None
     message_count: int | None = None
-    # Usage accounting (opencode tracks these; None when unknown).
+    # Usage accounting (None when the source does not report a given figure).
+    # `tokens_input` / `tokens_output` are fresh (uncached) prompt + generated
+    # tokens; the cache figures track prompt-cache reuse (large in agentic
+    # sessions and priced very differently); `tokens_reasoning` is the portion
+    # of output spent on hidden reasoning, where the source distinguishes it.
     cost: float | None = None
     tokens_input: int | None = None
     tokens_output: int | None = None
+    tokens_cache_read: int | None = None
+    tokens_cache_write: int | None = None
+    tokens_reasoning: int | None = None
     # Children populated when subagent folding is enabled.
     children: tuple["Session", ...] = ()
     messages: tuple[Message, ...] = ()

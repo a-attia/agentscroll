@@ -36,6 +36,9 @@ def session_summary(s: Session) -> dict[str, Any]:
         "cost": s.cost,
         "tokens_input": s.tokens_input,
         "tokens_output": s.tokens_output,
+        "tokens_cache_read": s.tokens_cache_read,
+        "tokens_cache_write": s.tokens_cache_write,
+        "tokens_reasoning": s.tokens_reasoning,
         "git_branch": (s.raw or {}).get("git_branch"),
         "children": [session_summary(c) for c in s.children],
     }

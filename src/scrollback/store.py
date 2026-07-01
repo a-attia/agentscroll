@@ -40,6 +40,9 @@ class Stats:
     total_messages: int
     total_tokens_input: int
     total_tokens_output: int
+    total_tokens_cache_read: int
+    total_tokens_cache_write: int
+    total_tokens_reasoning: int
     total_cost: float
     oldest: datetime | None
     newest: datetime | None
@@ -82,6 +85,9 @@ class Store:
         total_messages = 0
         total_tokens_in = 0
         total_tokens_out = 0
+        total_cache_read = 0
+        total_cache_write = 0
+        total_reasoning = 0
         total_cost = 0.0
         oldest: datetime | None = None
         newest: datetime | None = None
@@ -98,6 +104,12 @@ class Store:
                 total_tokens_in += s.tokens_input
             if s.tokens_output:
                 total_tokens_out += s.tokens_output
+            if s.tokens_cache_read:
+                total_cache_read += s.tokens_cache_read
+            if s.tokens_cache_write:
+                total_cache_write += s.tokens_cache_write
+            if s.tokens_reasoning:
+                total_reasoning += s.tokens_reasoning
             if s.cost:
                 total_cost += s.cost
             when = s.updated or s.created
@@ -112,6 +124,9 @@ class Store:
             total_messages=total_messages,
             total_tokens_input=total_tokens_in,
             total_tokens_output=total_tokens_out,
+            total_tokens_cache_read=total_cache_read,
+            total_tokens_cache_write=total_cache_write,
+            total_tokens_reasoning=total_reasoning,
             total_cost=total_cost,
             oldest=oldest,
             newest=newest,

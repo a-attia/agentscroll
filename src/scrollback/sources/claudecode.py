@@ -228,6 +228,7 @@ class ClaudeCodeSource(Source):
                 message_count=meta["msg_count"],
                 children=children,
                 raw={"path": str(f), "git_branch": meta["git_branch"]},
+                **_usage_from_meta(meta),
             )
 
     def _subagent_summary(self, parent_path: Path, sub_path: Path) -> Session:
@@ -252,6 +253,7 @@ class ClaudeCodeSource(Source):
             parent_id=parent_id,
             message_count=(sm or {}).get("msg_count", 0),
             raw={"path": str(sub_path)},
+            **_usage_from_meta(sm or {}),
         )
 
     # -- single session -----------------------------------------------------
@@ -338,6 +340,7 @@ class ClaudeCodeSource(Source):
             message_count=meta["msg_count"],
             messages=(),
             raw={"path": str(path), "git_branch": meta["git_branch"]},
+            **_usage_from_meta(meta),
         )
 
     def load_messages(
@@ -411,6 +414,10 @@ def _scan_metadata(path: Path) -> dict[str, Any] | None:
     first_user_text: str | None = None
     msg_count = 0
     seen = False
+    # Usage accumulators. Claude Code records per-turn `usage` on assistant
+    # messages; summing across turns matches the agent's own session totals.
+    tok_in = tok_out = tok_cache_read = tok_cache_write = 0
+    any_usage = False
 
     for obj in _iter_lines(path):
         seen = True
@@ -439,6 +446,14 @@ def _scan_metadata(path: Path) -> dict[str, Any] | None:
                 mv = m.get("model")
                 if mv and mv != "<synthetic>":
                     model = mv
+            if isinstance(m, dict):
+                u = m.get("usage")
+                if isinstance(u, dict):
+                    any_usage = True
+                    tok_in += _int(u.get("input_tokens"))
+                    tok_out += _int(u.get("output_tokens"))
+                    tok_cache_read += _int(u.get("cache_read_input_tokens"))
+                    tok_cache_write += _int(u.get("cache_creation_input_tokens"))
             if (
                 first_user_text is None
                 and t == "user"
@@ -458,6 +473,27 @@ def _scan_metadata(path: Path) -> dict[str, Any] | None:
         "first_ts": first_ts,
         "last_ts": last_ts,
         "msg_count": msg_count,
+        # Only report usage when the transcript actually carried any, so
+        # sessions with no usage records stay None (not a misleading 0).
+        "tokens_input": tok_in if any_usage else None,
+        "tokens_output": tok_out if any_usage else None,
+        "tokens_cache_read": tok_cache_read if any_usage else None,
+        "tokens_cache_write": tok_cache_write if any_usage else None,
+    }
+
+
+def _int(v: Any) -> int:
+    """Coerce a usage value to int, treating missing/garbage as 0."""
+    return v if isinstance(v, int) else 0
+
+
+def _usage_from_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    """Pull the usage fields out of a scan-metadata dict (all may be None)."""
+    return {
+        "tokens_input": meta.get("tokens_input"),
+        "tokens_output": meta.get("tokens_output"),
+        "tokens_cache_read": meta.get("tokens_cache_read"),
+        "tokens_cache_write": meta.get("tokens_cache_write"),
     }
 
 
@@ -560,6 +596,7 @@ def _parse_session(
         message_count=len(messages),
         messages=tuple(messages),
         raw={"path": str(path), "git_branch": meta["git_branch"]},
+        **_usage_from_meta(meta),
     )
 
 

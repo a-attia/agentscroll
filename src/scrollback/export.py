@@ -26,6 +26,35 @@ def _fmt_dt(dt: datetime | None) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S %Z").strip() if dt else "?"
 
 
+def _fmt_tokens(n: int | None) -> str:
+    if not n:
+        return "0"
+    if n < 1000:
+        return str(n)
+    if n < 1_000_000:
+        return f"{n / 1e3:.1f}k"
+    return f"{n / 1e6:.1f}M"
+
+
+def _usage_summary(session: Session) -> str:
+    """A compact one-line usage string, or '' when the source reports none."""
+    s = session
+    if not any((s.tokens_input, s.tokens_output, s.tokens_cache_read,
+                s.tokens_cache_write, s.tokens_reasoning, s.cost)):
+        return ""
+    bits = []
+    if s.tokens_input or s.tokens_output:
+        bits.append(f"{_fmt_tokens(s.tokens_input)} in / {_fmt_tokens(s.tokens_output)} out")
+    if s.tokens_cache_read or s.tokens_cache_write:
+        bits.append(f"cache {_fmt_tokens(s.tokens_cache_read)} read / "
+                    f"{_fmt_tokens(s.tokens_cache_write)} write")
+    if s.tokens_reasoning:
+        bits.append(f"{_fmt_tokens(s.tokens_reasoning)} reasoning")
+    if s.cost:
+        bits.append(f"${s.cost:.2f}")
+    return "; ".join(bits)
+
+
 # -- markdown --------------------------------------------------------------
 
 
@@ -50,6 +79,9 @@ def to_markdown(session: Session, *, include_reasoning: bool = True,
     lines.append(f"- **Created**: {_fmt_dt(session.created)}")
     lines.append(f"- **Updated**: {_fmt_dt(session.updated)}")
     lines.append(f"- **Messages**: {len(session.messages)}")
+    usage = _usage_summary(session)
+    if usage:
+        lines.append(f"- **Usage**: {usage}")
     lines.append("")
     lines.append("---")
     lines.append("")
@@ -211,6 +243,9 @@ def to_html(session: Session, *, include_reasoning: bool = True,
         meta_bits.append(f"model: {session.model}")
     meta_bits.append(f"created: {_fmt_dt(session.created)}")
     meta_bits.append(f"messages: {len(session.messages)}")
+    usage = _usage_summary(session)
+    if usage:
+        meta_bits.append(f"usage: {usage}")
     meta = " &middot; ".join(_html.escape(b) for b in meta_bits)
 
     body_parts: list[str] = []

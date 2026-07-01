@@ -690,7 +690,9 @@ function renderHeader(meta) {
       copyId,
       meta.model ? el("span", {}, "model: " + meta.model) : null,
       meta.git_branch ? el("span", {}, "branch: " + meta.git_branch) : null,
-      meta.tokens_input != null ? el("span", {}, `tokens ${fmtTokens(meta.tokens_input)}/${fmtTokens(meta.tokens_output)}`) : null,
+      meta.tokens_input != null ? el("span", { title: "input / output tokens" }, `tokens ${fmtTokens(meta.tokens_input)}/${fmtTokens(meta.tokens_output)}`) : null,
+      meta.tokens_cache_read != null && (meta.tokens_cache_read || meta.tokens_cache_write)
+        ? el("span", { title: "prompt cache read / write" }, `cache ${fmtTokens(meta.tokens_cache_read)}/${fmtTokens(meta.tokens_cache_write)}`) : null,
       el("span", {}, fmtDate(meta.created)),
       el("span", {}, `${meta.message_count} messages`),
       meta.directory ? el("span", {}, meta.directory) : null

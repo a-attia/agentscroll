@@ -118,6 +118,7 @@ class CodexSource(Source):
                 model=meta["model"],
                 message_count=meta["msg_count"],
                 raw={"path": str(f)},
+                **_usage_from_meta(meta),
             )
 
     # -- single session -----------------------------------------------------
@@ -141,10 +142,21 @@ class CodexSource(Source):
             message_count=len(messages),
             messages=tuple(messages),
             raw={"path": str(path)},
+            **_usage_from_meta(meta),
         )
 
 
 # -- parsing helpers -------------------------------------------------------
+
+
+def _usage_from_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    """Pull usage fields out of a scan-metadata dict (all may be None)."""
+    return {
+        "tokens_input": meta.get("tokens_input"),
+        "tokens_output": meta.get("tokens_output"),
+        "tokens_cache_read": meta.get("tokens_cache_read"),
+        "tokens_cache_write": meta.get("tokens_cache_write"),
+    }
 
 
 def _iter_lines(path: Path) -> Iterator[dict[str, Any]]:
@@ -198,6 +210,7 @@ def _scan_meta(path: Path) -> dict[str, Any] | None:
     last_ts: str | int | None = None
     msg_count = 0
     seen = False
+    usage: dict[str, int] | None = None
 
     for obj in _iter_lines(path):
         seen = True
@@ -219,6 +232,12 @@ def _scan_meta(path: Path) -> dict[str, Any] | None:
                 txt = _record_text(p).strip()
                 if txt and not txt.startswith("<"):
                     title = " ".join(txt.split())[:60]
+        # Best-effort usage: Codex emits token counts on some record types
+        # (e.g. a `token_count` event). Take the LAST cumulative reading we
+        # see. Absent in older/other formats -> usage stays None.
+        latest = _token_usage(obj, p)
+        if latest is not None:
+            usage = latest
 
     if not seen:
         return None
@@ -231,6 +250,52 @@ def _scan_meta(path: Path) -> dict[str, Any] | None:
         "first_ts": first_ts,
         "last_ts": last_ts,
         "msg_count": msg_count,
+        "tokens_input": (usage or {}).get("input"),
+        "tokens_output": (usage or {}).get("output"),
+        "tokens_cache_read": (usage or {}).get("cache_read"),
+        "tokens_cache_write": (usage or {}).get("cache_write"),
+    }
+
+
+def _token_usage(obj: dict[str, Any], payload: dict[str, Any]) -> dict[str, int] | None:
+    """Best-effort extraction of a token-usage reading from a Codex record.
+
+    Codex's rollout format has changed across versions; this looks for a
+    `token_count` / `usage` object in a few known shapes and returns a
+    normalized {input, output, cache_read, cache_write} dict, or None. It is
+    intentionally forgiving: unknown shapes yield None rather than raising.
+    """
+    src = None
+    # A record whose own type is token_count/usage carries the fields inline.
+    if payload.get("type") in ("token_count", "usage"):
+        src = payload
+    else:
+        for cand in (payload.get("token_count"), payload.get("usage"),
+                     obj.get("token_count"), obj.get("usage")):
+            if isinstance(cand, dict):
+                src = cand
+                break
+    if src is None:
+        return None
+    # Some versions nest the counts under an "info"/"total"/"last" object.
+    for nest in ("info", "total", "last"):
+        if isinstance(src.get(nest), dict):
+            src = src[nest]
+            break
+
+    def g(*keys: str) -> int:
+        for k in keys:
+            v = src.get(k)
+            if isinstance(v, int):
+                return v
+        return 0
+
+    read = g("cached_input_tokens", "cache_read_input_tokens", "cache_read")
+    return {
+        "input": g("input_tokens", "input", "prompt_tokens"),
+        "output": g("output_tokens", "output", "completion_tokens"),
+        "cache_read": read,
+        "cache_write": g("cache_creation_input_tokens", "cache_write"),
     }
 
 

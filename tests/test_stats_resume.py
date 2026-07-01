@@ -59,6 +59,10 @@ def test_stats_aggregates():
     assert st.total_messages == 22
     assert st.total_tokens_input == 220
     assert st.total_tokens_output == 37
+    # These sessions carry no cache/reasoning usage, so the new totals are 0.
+    assert st.total_tokens_cache_read == 0
+    assert st.total_tokens_cache_write == 0
+    assert st.total_tokens_reasoning == 0
     assert abs(st.total_cost - 0.75) < 1e-9
     assert st.oldest.day == 1 and st.newest.day == 5
 

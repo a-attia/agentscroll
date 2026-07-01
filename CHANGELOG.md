@@ -6,6 +6,26 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-30
+
+### Added
+
+- **Cache & reasoning token accounting.** Sessions now carry
+  `tokens_cache_read`, `tokens_cache_write`, and `tokens_reasoning` in
+  addition to input/output/cost. In agentic sessions cache reads often
+  dominate total token volume, so this makes scrollback's usage numbers
+  reconcilable with the agents' own reports:
+  - **opencode** reads the corresponding SQLite columns (tolerant of older
+    databases that lack them).
+  - **Claude Code** now reports usage at all — summed per-turn from each
+    assistant message's `usage` block (previously blank).
+  - **Codex** parses token-count records where the rollout format includes
+    them (best-effort; `None` when absent).
+  - **Aider** has no token data on disk and stays `None`.
+- `stats` shows a `cache` (read/write) line and a `reasoning` line; the web
+  transcript header shows a cache figure; Markdown/HTML/JSON exports include
+  a usage summary.
+
 ## [0.1.2] - 2026-06-30
 
 ### Added
@@ -100,7 +120,8 @@ export it from a CLI and a local web app.
 - Negative pagination arguments are rejected; clearer errors for unknown
   sources, failed exports, and unavailable data sources.
 
-[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/a-attia/scrollback/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/a-attia/scrollback/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/a-attia/scrollback/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/a-attia/scrollback/releases/tag/v0.1.0

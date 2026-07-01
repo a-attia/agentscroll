@@ -14,13 +14,13 @@ modifies, locks for writing, or uploads your data.
 You can use it two ways. From the **command line**, list, search, and export
 your sessions in a single scriptable tool:
 
-![scrollback listing recent sessions in the terminal.](https://raw.githubusercontent.com/a-attia/scrollback/v0.1.2/assets/screenshots/cli.png)
+![scrollback listing recent sessions in the terminal.](https://raw.githubusercontent.com/a-attia/scrollback/v0.2.0/assets/screenshots/cli.png)
 
 Or open the **local web app** to read a transcript in full — with rendered
 Markdown, syntax-highlighted code, and typeset LaTeX math:
 
 ![The scrollback web app showing a session list beside a transcript with
-rendered Markdown, highlighted code, and typeset equations.](https://raw.githubusercontent.com/a-attia/scrollback/v0.1.2/assets/screenshots/web.png)
+rendered Markdown, highlighted code, and typeset equations.](https://raw.githubusercontent.com/a-attia/scrollback/v0.2.0/assets/screenshots/web.png)
 
 Both views read the same on-disk session stores, so you can jump between
 them freely. (The screenshots above use synthetic demo data.)
@@ -175,6 +175,16 @@ scrollback resume <selector> --copy       # ...and copy it to the clipboard
 busiest projects. `resume` prints the command to continue a session in its
 own agent (for example `opencode --session <id>` or `claude --resume <id>`),
 with a `cd` into the session's project directory.
+
+**A note on token figures.** Where the source records it, scrollback reports
+tokens in four buckets — *input*, *output*, *cache read*, and *cache write* —
+because they mean different things and are priced very differently. In
+agentic sessions the conversation context is re-sent every turn but served
+from the prompt cache, so **cache reads usually dominate total volume** while
+costing a fraction of fresh input. "Total tokens" is therefore not one
+number; the cost figure (when available) is the most faithful summary of
+consumption. Sources that don't record a given figure show it as blank
+rather than a misleading zero.
 
 ## The web app
 
