@@ -6,6 +6,21 @@ follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-06-30
+
+### Added
+
+- An **About dialog** in the web UI (the header ⓘ button): app icon, version
+  (from `/api/health`), description, and a clickable repository link. Works
+  the same in a browser tab, a standalone window, and the native app — and on
+  every platform, unlike the macOS-only native About panel.
+
+### Fixed
+
+- External links from the native app window now open in the user's real
+  default browser (via the Python bridge, restricted to http/https) instead
+  of being trapped in an in-app pywebview window.
+
 ## [0.3.1] - 2026-06-30
 
 ### Fixed
@@ -155,7 +170,8 @@ export it from a CLI and a local web app.
 - Negative pagination arguments are rejected; clearer errors for unknown
   sources, failed exports, and unavailable data sources.
 
-[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/a-attia/scrollback/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/a-attia/scrollback/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/a-attia/scrollback/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/a-attia/scrollback/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/a-attia/scrollback/compare/v0.1.2...v0.2.0

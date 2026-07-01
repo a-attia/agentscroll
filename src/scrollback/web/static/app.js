@@ -687,6 +687,22 @@ function showBrowse() {
   if (!state.current) $("#empty").hidden = false;
 }
 
+// -- about dialog ---------------------------------------------------------
+let _aboutVersionLoaded = false;
+async function openAbout() {
+  const back = $("#about-backdrop");
+  back.hidden = false;
+  $("#about-close").focus();
+  if (!_aboutVersionLoaded) {
+    try {
+      const h = await getJSON("/api/health");
+      if (h && h.version) $("#about-version").textContent = "Version " + h.version;
+      _aboutVersionLoaded = true;
+    } catch { /* leave the placeholder */ }
+  }
+}
+function closeAbout() { $("#about-backdrop").hidden = true; }
+
 // -- narrow-screen session drawer -----------------------------------------
 // On wide screens the rail is a static column and these are no-ops in effect
 // (the CSS keeps the backdrop hidden); on narrow screens they open/close the
@@ -1274,7 +1290,10 @@ function openSelection() {
 document.addEventListener("keydown", (e) => {
   const typing = ["INPUT", "TEXTAREA"].includes(document.activeElement.tagName);
   if (e.key === "/" && !typing) { e.preventDefault(); searchInput.focus(); searchInput.select(); return; }
-  // Esc closes the mobile session drawer first, wherever focus is.
+  // Esc closes the About dialog, then the mobile drawer, wherever focus is.
+  if (e.key === "Escape" && !$("#about-backdrop").hidden) {
+    closeAbout(); return;
+  }
   if (e.key === "Escape" && $("#rail").classList.contains("show")) {
     closeRail(); return;
   }
@@ -1336,6 +1355,21 @@ $("#view-browse").addEventListener("click", showBrowse);
 $("#view-stats").addEventListener("click", openStats);
 $("#rail-toggle").addEventListener("click", toggleRail);
 $("#rail-backdrop").addEventListener("click", closeRail);
+$("#about-btn").addEventListener("click", openAbout);
+$("#about-close").addEventListener("click", closeAbout);
+$("#about-backdrop").addEventListener("click", (e) => {
+  if (e.target === $("#about-backdrop")) closeAbout();  // click outside the card
+});
+// The native (pywebview) window traps target="_blank" in an in-app window, so
+// route external links through the bridge to the user's real browser. In a
+// normal browser tab this handler is skipped and the plain <a> opens a tab.
+$("#about-repo").addEventListener("click", (e) => {
+  const api = nativeApi();
+  if (api) {
+    e.preventDefault();
+    api.open_link(e.currentTarget.href).catch(() => {});
+  }
+});
 // Normalize drawer state when crossing the wide/narrow breakpoint, so an
 // open drawer doesn't get "stuck" (stale .show / aria-expanded / backdrop)
 // after a resize back and forth.

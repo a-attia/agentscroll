@@ -1041,6 +1041,20 @@ class _AppBridge:
         webopen.open_window(full)
         return "opened"
 
+    def open_link(self, url: str) -> str:
+        """Open an absolute external URL (e.g. the repo) in the real browser.
+
+        The native webview traps `target="_blank"` in an in-app window, so the
+        frontend routes external links through here. Restricted to http(s) so
+        the bridge can't be coaxed into opening arbitrary schemes.
+        """
+        import webbrowser
+
+        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+            return "rejected"
+        webbrowser.open(url)
+        return "opened"
+
 
 def _run_app_window(app: object, args: argparse.Namespace, url: str) -> int:
     try:
