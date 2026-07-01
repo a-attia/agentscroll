@@ -33,6 +33,18 @@ def _eprint(*a: object) -> None:
     print(*a, file=sys.stderr)
 
 
+def _dbg(*a: object) -> None:
+    """Diagnostic to stderr, only when SCROLLBACK_DEBUG is set.
+
+    Used for best-effort, silently-degrading paths (e.g. the macOS About
+    panel) so failures are diagnosable without spamming normal runs.
+    """
+    import os
+
+    if os.environ.get("SCROLLBACK_DEBUG"):
+        print(*a, file=sys.stderr)
+
+
 def _nonneg_int(s: str) -> int:
     """argparse type: a non-negative integer (rejects negatives)."""
     try:
@@ -775,9 +787,14 @@ def _brand_macos_app() -> None:
             # Fields the standard About panel reads:
             info["CFBundleShortVersionString"] = __version__
             info["CFBundleVersion"] = __version__
+            # Shown as the small grey text in the standard About panel. Include
+            # the repo URL here so it is ALWAYS visible, independent of whether
+            # the clickable-link menu rewire (below) succeeds on this pywebview
+            # / macOS build.
             info["NSHumanReadableCopyright"] = (
                 "Navigate, search, copy, and export your AI coding-agent "
-                "sessions. Local-first and read-only."
+                "sessions. Local-first and read-only.\n"
+                "github.com/a-attia/scrollback"
             )
     except Exception:
         pass  # best-effort cosmetic; never fail the launch
@@ -850,21 +867,30 @@ def _install_macos_about_link() -> None:
 
         _about_handler = _AboutHandler.alloc().init()
 
-        # Find the About item in the app menu (first menu) and rewire it.
+        # Find the standard About item in the app menu (first menu) and rewire
+        # it to our rich panel (with the clickable repo link). If no such item
+        # exists (some pywebview builds don't add one), the plain panel still
+        # shows the repo URL via NSHumanReadableCopyright set in _brand_macos_app.
         app = NSApplication.sharedApplication()
         main_menu = app.mainMenu()
         if main_menu is None or main_menu.numberOfItems() == 0:
             return
         app_menu = main_menu.itemAtIndex_(0).submenu()
+        rewired = False
         for i in range(app_menu.numberOfItems()):
             item = app_menu.itemAtIndex_(i)
             action = item.action()
-            if action is not None and str(action) == "orderFrontStandardAboutPanel:":
+            title = str(item.title() or "")
+            if (action is not None and str(action) == "orderFrontStandardAboutPanel:") \
+                    or title.startswith("About"):
                 item.setTarget_(_about_handler)
                 item.setAction_(b"showAbout:")
+                rewired = True
                 break
-    except Exception:
-        pass  # best-effort; the plain About still works
+        if not rewired:
+            _dbg("about-link: no standard About menu item found to rewire")
+    except Exception as exc:  # best-effort; the plain About still works
+        _dbg(f"about-link: {exc!r}")
 
 
 def _open_tab(url: str) -> str:
